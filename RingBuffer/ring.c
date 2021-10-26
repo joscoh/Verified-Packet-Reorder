@@ -8,6 +8,24 @@ struct ring {
   int len;
 };
 
+// Describe a ring buffer - we use 2 lists for the front (next to be removed) and back (next to be added)
+/*@
+  
+  //First we describe a packet array with contents l (TODO: may need to involve lengths)
+  predicate arr_list(struct packet *arr, list<int> l) =
+    arr == 0 ? l == nil
+    :
+    packet_pred(arr, ?val) &*& l == cons(val, ?vals) &*& arr_list(arr+1, vals);
+  	
+
+   predicate ring_contents(struct ring *ring, list<int> front, list<int> back) =
+    ring == 0 ? front == nil &*& back == nil
+    :
+    length(front) + length(back) == ring->len &*& ring->len <= ring->cap &*&
+    arr_list(ring->array, back) &*& arr_list(ring->array + ring->begin, front);
+ @*/
+     
+
 struct ring* ring_create(int capacity)
 {
   struct ring* ret = malloc(sizeof(struct ring));
