@@ -36,6 +36,8 @@
 extern "C" {
 #endif
 
+/*@ inductive tcp_type = ignore | syn | ack | fin | rst | data | retransmit; @*/
+
 /* Used to distinguish between different TCP events */
 typedef enum {
 	/* Not a valid TCP packet - do not attempt to reorder */
@@ -60,6 +62,19 @@ typedef enum {
 	TCP_REORDER_RETRANSMIT
 } tcp_reorder_t;
 
+/*@ predicate tcp_reorder_tp(tcp_reorder_t o, tcp_type t) =
+	switch(t) {
+	  case ignore : return o == TCP_REORDER_IGNORE;
+	  case syn : return o == TCP_REORDER_SYN;
+	  case ack : return o == TCP_REORDER_ACK;
+	  case fin : return o == TCP_REORDER_FIN;
+	  case rst : return o == TCP_REORDER_RST;
+	  case data : return o == TCP_REORDER_DATA;
+	  case retransmit : return o == TCP_REORDER_RETRANSMIT;
+	};
+  @*/
+
+
 /* An entry in the reordering list for a TCP packet */
 typedef struct tcp_pkt {
 
@@ -83,9 +98,16 @@ typedef struct tcp_pkt {
 
 } tcp_packet_t;
 
+//TODO: for now, ignore data field except via exists
+//TODO: may need malloc nodes, cases for null start and end (or in tcp_reorder/separate predicate)
+/*@ predicate tcp_packet_tp(tcp_packet_t *start, tcp_packet_t *end, int length, tcp_type type, int seq, int plen, double ts) =
+      start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> plen &*& start->ts |-> ts &*& start->data |-> ?data&*& tcp_reorder_tp(t, type) &*&
+      (start == end ? start-> next == 0 &*& length == 1 :
+       start->next |-> ?next &*& tcp_packet_tp(next, end, length-1, ?type1, ?seq1, ?plen1, ?ts1));
+  @*/
+
 //TODO: see how to handle this
-typedef struct libtrace_packet_t {
-	} libtrace_packet_t;
+typedef struct libtrace_packet_t {} libtrace_packet_t;
 
 //Verifast will not parse inline definition
 typedef void *read_packet_callback(uint32_t exp, libtrace_packet_t *packet);
