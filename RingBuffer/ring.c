@@ -13,23 +13,37 @@ struct ring {
   
   //First we describe a packet array with contents l (TODO: may need to involve lengths)
   predicate arr_list(struct packet *arr, list<int> l) =
-    arr == 0 ? l == nil
-    :
-    packet_pred(arr, ?val) &*& l == cons(val, ?vals) &*& arr_list(arr+1, vals);
+    switch(l) {
+      case nil : return true;
+      case cons(h, t) : return packet_pred(arr, h) &*& arr_list(arr+1, t);
+   };
+   
+   predicate empty_arr(struct packet *arr, int length) =
+   //TODO: bounds info
+   chars((void*)arr, length * sizeof(struct packet), _);
+   
+   
+   predicate ring_vals(struct ring *ring, struct packet *arr, int cap, int beg, int len) =
+     ring->len |-> len &*& ring->cap |-> cap &*& ring->array |-> arr 
+      &*& ring->begin |-> beg;
   	
 
    predicate ring_contents(struct ring *ring, list<int> front, list<int> back) =
-    ring == 0 ? front == nil &*& back == nil
-    :
-    length(front) + length(back) == ring->len &*& ring->len <= ring->cap &*&
-    arr_list(ring->array, back) &*& arr_list(ring->array + ring->begin, front);
+      malloc_block_ring(ring) &*& ring_vals(ring, ?arr, ?cap, ?beg, ?len) &*&
+      malloc_block_chars((void*)arr, cap * sizeof(struct packet)) &*&
+      len == length(front) + length(back) &*& len <= cap &*&
+      arr_list(arr, back) &*& arr_list(arr + beg, front) &*& empty_arr(arr + (beg - cap - , cap - len);
  @*/
      
 
 struct ring* ring_create(int capacity)
+//@ requires 0 <= capacity &*& 0 <= (capacity * sizeof(struct packet));
+//@ ensures result == 0 ? true : ring_contents(result, nil, nil);
 {
   struct ring* ret = malloc(sizeof(struct ring));
-  if (ret == 0) return 0;
+  if (ret == 0) {
+   return 0;
+  }
   struct packet* arr = malloc(sizeof (struct packet)*capacity);
   if (arr == 0) {
     free(ret);
@@ -39,6 +53,10 @@ struct ring* ring_create(int capacity)
   ret->begin = 0;
   ret->len = 0;
   ret->cap = capacity;
+  //@close arr_list(arr, nil);
+  //@close arr_list((arr + (sizeof(struct packet) * 0)), nil);
+  //@close ring_vals(ret, arr, capacity, 0, 0);
+  //@close ring_contents(ret, nil, nil);
   return ret;
 }
 
