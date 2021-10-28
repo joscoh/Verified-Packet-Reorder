@@ -49,7 +49,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
-#include <libtrace.h>
+//#include <libtrace.h>
 #include <stdint.h>
 
 #include "tcp_reorder.h"
@@ -87,9 +87,10 @@ static int seq_cmp (uint32_t seq_a, uint32_t seq_b) {
  * Returns:
  * 	a pointer to a newly allocated TCP reorderer
  */
-tcp_packet_list_t *tcp_create_reorderer(
-		void *(*cb)(uint32_t, libtrace_packet_t *),
-		void (*destroy_cb)(void *)) {
+tcp_packet_list_t *tcp_create_reorderer(read_packet_callback cb, destroy_packet_callback destroy_cb)
+		//void *(*cb)(uint32_t, libtrace_packet_t *),
+		//void (*destroy_cb)(void *))
+		 {
 	tcp_packet_list_t *ord = 
 		(tcp_packet_list_t *)malloc(sizeof(tcp_packet_list_t));
 	
@@ -143,7 +144,8 @@ static void insert_packet(tcp_packet_list_t *ord, void *packet,
 		uint32_t seq, uint32_t plen, double ts, tcp_reorder_t type) {
 
 	tcp_packet_t *tpkt = (tcp_packet_t *)malloc(sizeof(tcp_packet_t));
-	tcp_packet_t *it, *prev = NULL;
+	tcp_packet_t *it = NULL;
+	tcp_packet_t *prev = NULL;
 
 	tpkt->type = type;
 	tpkt->seq = seq;

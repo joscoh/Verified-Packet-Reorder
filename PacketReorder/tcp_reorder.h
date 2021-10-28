@@ -28,7 +28,9 @@
 #ifndef TCP_REORDER_H_
 #define TCP_REORDER_H_
 
-#include <libtrace.h>
+#include <stdint.h>
+
+//#include <libtrace.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,7 +57,7 @@ typedef enum {
 	TCP_REORDER_DATA,
 
 	/* Retransmitted TCP packet */
-	TCP_REORDER_RETRANSMIT,
+	TCP_REORDER_RETRANSMIT
 } tcp_reorder_t;
 
 /* An entry in the reordering list for a TCP packet */
@@ -81,6 +83,15 @@ typedef struct tcp_pkt {
 
 } tcp_packet_t;
 
+//TODO: see how to handle this
+typedef struct libtrace_packet_t {
+	} libtrace_packet_t;
+
+//Verifast will not parse inline definition
+typedef void *read_packet_callback(uint32_t exp, libtrace_packet_t *packet);
+
+typedef void destroy_packet_callback(void *data);
+
 
 
 /* A TCP reorderer - one is required for each half of a TCP connection */
@@ -94,11 +105,13 @@ typedef struct tcp_reorder {
 
 	/* Read callback function for packets that are to be inserted into
 	 * the reordering list */
-	void *(*read_packet)(uint32_t exp, libtrace_packet_t *packet);
+	read_packet_callback *read_packet;
+	//void *(*read_packet)(uint32_t exp, libtrace_packet_t *packet);
 
 	/* Destroy callback function for packet data extracted using the
 	 * read callback */
-	void (*destroy_packet)(void *);
+	destroy_packet_callback *destroy_packet;
+	//void (*destroy_packet)(void *);
 
 	/* The head of the reordering list */
 	tcp_packet_t *list;
@@ -119,8 +132,8 @@ typedef struct tcp_reorder {
  * Returns:
  *      a pointer to a newly allocated TCP reorderer
  */
-tcp_packet_list_t *tcp_create_reorderer(void *(*callback)(uint32_t, 
-		libtrace_packet_t *), void (*destroy_cb)(void *));
+tcp_packet_list_t *tcp_create_reorderer(read_packet_callback cb, destroy_packet_callback destroy_cb);
+// void *(*callback)(uint32_t, libtrace_packet_t *), void (*destroy_cb)(void *));
 
 /* Destroys a TCP reorderer, freeing any resources it may be using
  *
