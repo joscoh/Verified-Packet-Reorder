@@ -91,7 +91,7 @@ static int seq_cmp (uint32_t seq_a, uint32_t seq_b)
  */
 tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet_callback *destroy_cb)
 //@ requires true;
-//@ ensures result == 0 ? true : tcp_packet_list_tp(result, 0, 0);
+//@ ensures result == 0 ? true : tcp_packet_list_tp(result, 0, 0, 0, 0);
 		//void *(*cb)(uint32_t, libtrace_packet_t *),
 		//void (*destroy_cb)(void *))
 		 {
@@ -105,7 +105,7 @@ tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet
 	ord->read_packet = cb;
 	ord->destroy_packet = destroy_cb;
 	ord->list_len = 0;
-	//@close tcp_packet_list_tp(ord, 0, 0);
+	//@close tcp_packet_list_tp(ord, 0, 0, 0, 0);
 
 	return ord;
 }
@@ -115,15 +115,23 @@ tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet
  * Parameters:
  * 	ord - the reorderer to be destroyed
  */
-void tcp_destroy_reorderer(tcp_packet_list_t *ord) {
-
+void tcp_destroy_reorderer(tcp_packet_list_t *ord)
+//@ requires tcp_packet_list_tp(ord, ?seq, ?len, ?start, ?end);
+//@ ensures true;
+{
+	//@open tcp_packet_list_tp(ord, seq, len, start, end);
 	tcp_packet_t *head = ord->list;
 	tcp_packet_t *tmp;
-
+	
 	/* Free any packets we may still be hanging onto */
-	while (head != NULL) {
+	while (head != NULL)
+	//@invariant ord->destroy_packet |-> _ &*& head == 0 ? true : tcp_packet_tp(head, end, _, _, _, _, _, _);
+	   {
+	   //@open tcp_packet_tp(head, end, _, _, _, _, _, _);
 		if (ord->destroy_packet)
-			ord->destroy_packet(head->data);
+			//TODO: Verifast has problems with this - might need pre/post conditions
+			//(*(ord->destroy_packet))(head->data);
+			free(head->data);
 		else
 			free(head->data);
 		tmp = head;

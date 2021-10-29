@@ -111,13 +111,18 @@ typedef struct tcp_pkt {
 
 //TODO: for now, ignore data field except via exists
 //TODO: may need malloc nodes, cases for null start and end (or in tcp_reorder/separate predicate)
+//TODO: need to handle type now that this may not exist (maybe separate into 2 predicates?)
 /*@ predicate tcp_packet_tp(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq, int plen, double ts) =
-      start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> plen &*& start->ts |-> ts &*& start->data |-> ?data&*& tcp_reorder_tp(t, type) &*&
-      //sortedness comes from here:
-      cmp(seq, bound) > 0 &*& //bound < seq
-      (start == end ? start-> next == 0 &*& length == 1 :
-       start->next |-> ?next &*& tcp_packet_tp(next, end, length-1, seq, ?type1, ?seq1, ?plen1, ?ts1));
+	      end != 0 &*&
+	      malloc_block_tcp_pkt(start) &*&
+	      start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> plen &*& start->ts |-> ts &*& start->data |-> ?data&*& start->next |-> ?next &*&
+	      malloc_block(data, plen) &*& chars(data, plen, _) &*&
+	      //sortedness comes from here:
+	      cmp(seq, bound) > 0 &*& //bound < seq
+	      (start == end ? next == 0 &*& length == 1 :
+	       next != 0 &*& tcp_packet_tp(next, end, length-1, seq, ?type1, ?seq1, ?plen1, ?ts1));
   @*/
+
 
 //TODO: see how to handle this
 typedef struct libtrace_packet_t {} libtrace_packet_t;
@@ -159,11 +164,11 @@ typedef struct tcp_reorder {
 //TODO: see what params we need here/in the previous predicate
 //TODO: include list of elements? (maybe later - need to sort it)
 //TODO: malloc
-/*@ predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, int exp_seq, int length) =
+/*@ predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, int exp_seq, int length, tcp_packet_t *start, tcp_packet_t *end) =
       malloc_block_tcp_reorder(reorder) &*&
-      reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
-      reorder->list |-> ?start &*& reorder->list_end |-> ?end &*&
-      (start == 0 && end == 0) ? length == 0 :
+      reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> ?des &*&
+      reorder->list |-> start &*& reorder->list_end |-> end &*&
+      start == 0 ? end == 0 && length == 0 :
       tcp_packet_tp(start, end, length, 0, _, _, _, _);
 @*/
       
