@@ -64,10 +64,12 @@
  * 	the result of subtracting seq_b from seq_a (seq_a - seq_b, in other
  * 	words), taking sequence number wraparound into account
  */
-static int seq_cmp (uint32_t seq_a, uint32_t seq_b) {
+static int seq_cmp (uint32_t seq_a, uint32_t seq_b)
+//@ requires seq_a <= UINT32_MAX &*& seq_b <= UINT32_MAX;
+//@ ensures result == cmp(seq_a, seq_b);
+{
 
         if (seq_a == seq_b) return 0;
-
 
         if (seq_a > seq_b)
                 return (int)(seq_a - seq_b);

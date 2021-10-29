@@ -98,12 +98,25 @@ typedef struct tcp_pkt {
 
 } tcp_packet_t;
 
+//Macro in stdint give error because of target-dependent type
+#define UINT32_MAX 4294967295UL 
+
+//The comparison function is essentially arbitrary, but we want an abstract notion
+//of comparison so that we don't have to manually reason about modulo the whole time
+//TODO: can relate this to modulo if we want but will need extra lemmas
+/*@ fixpoint int cmp(int a, int b) {
+      return (a == b) ? 0 : ((a > b) ? (a - b) : (UINT32_MAX - ((b - a) - 1)));
+}
+@*/
+
 //TODO: for now, ignore data field except via exists
 //TODO: may need malloc nodes, cases for null start and end (or in tcp_reorder/separate predicate)
-/*@ predicate tcp_packet_tp(tcp_packet_t *start, tcp_packet_t *end, int length, tcp_type type, int seq, int plen, double ts) =
+/*@ predicate tcp_packet_tp(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq, int plen, double ts) =
       start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> plen &*& start->ts |-> ts &*& start->data |-> ?data&*& tcp_reorder_tp(t, type) &*&
+      //sortedness comes from here:
+      cmp(seq, bound) > 0 &*& //bound < seq
       (start == end ? start-> next == 0 &*& length == 1 :
-       start->next |-> ?next &*& tcp_packet_tp(next, end, length-1, ?type1, ?seq1, ?plen1, ?ts1));
+       start->next |-> ?next &*& tcp_packet_tp(next, end, length-1, seq, ?type1, ?seq1, ?plen1, ?ts1));
   @*/
 
 //TODO: see how to handle this
@@ -142,6 +155,16 @@ typedef struct tcp_reorder {
 	tcp_packet_t *list_end;
 
 } tcp_packet_list_t;
+
+//TODO: see what params we need here/in the previous predicate
+//TODO: include list of elements? (maybe later - need to sort it)
+//TODO: malloc
+/*@ predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, int exp_seq, int length) =
+      reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
+      reorder->list |-> ?start &*& reorder->list_end |-> ?end &*&
+      tcp_packet_tp(start, end, length, 0, _, _, _, _);
+@*/
+      
 
 /* Creates and returns a new TCP reorderer
  *
