@@ -160,8 +160,10 @@ typedef struct tcp_reorder {
 //TODO: include list of elements? (maybe later - need to sort it)
 //TODO: malloc
 /*@ predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, int exp_seq, int length) =
+      malloc_block_tcp_reorder(reorder) &*&
       reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
       reorder->list |-> ?start &*& reorder->list_end |-> ?end &*&
+      (start == 0 && end == 0) ? length == 0 :
       tcp_packet_tp(start, end, length, 0, _, _, _, _);
 @*/
       
@@ -177,7 +179,7 @@ typedef struct tcp_reorder {
  * Returns:
  *      a pointer to a newly allocated TCP reorderer
  */
-tcp_packet_list_t *tcp_create_reorderer(read_packet_callback cb, destroy_packet_callback destroy_cb);
+tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet_callback *destroy_cb);
 // void *(*callback)(uint32_t, libtrace_packet_t *), void (*destroy_cb)(void *));
 
 /* Destroys a TCP reorderer, freeing any resources it may be using

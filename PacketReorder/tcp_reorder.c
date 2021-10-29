@@ -89,12 +89,15 @@ static int seq_cmp (uint32_t seq_a, uint32_t seq_b)
  * Returns:
  * 	a pointer to a newly allocated TCP reorderer
  */
-tcp_packet_list_t *tcp_create_reorderer(read_packet_callback cb, destroy_packet_callback destroy_cb)
+tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet_callback *destroy_cb)
+//@ requires true;
+//@ ensures result == 0 ? true : tcp_packet_list_tp(result, 0, 0);
 		//void *(*cb)(uint32_t, libtrace_packet_t *),
 		//void (*destroy_cb)(void *))
 		 {
 	tcp_packet_list_t *ord = 
 		(tcp_packet_list_t *)malloc(sizeof(tcp_packet_list_t));
+	if(ord == 0) return 0;
 	
 	ord->expected_seq = 0;
 	ord->list = NULL;
@@ -102,6 +105,7 @@ tcp_packet_list_t *tcp_create_reorderer(read_packet_callback cb, destroy_packet_
 	ord->read_packet = cb;
 	ord->destroy_packet = destroy_cb;
 	ord->list_len = 0;
+	//@close tcp_packet_list_tp(ord, 0, 0);
 
 	return ord;
 }
