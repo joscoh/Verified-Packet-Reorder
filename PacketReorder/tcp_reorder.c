@@ -125,9 +125,10 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 	
 	/* Free any packets we may still be hanging onto */
 	while (head != NULL)
-	//@invariant ord->destroy_packet |-> _ &*& head == 0 ? true : tcp_packet_tp(head, end, _, _, _, _, _, _);
+	//@invariant ord->destroy_packet |-> _ &*& head == 0 ? true : tcp_packet_full(head, end, _, _, _, _);
 	   {
-	   //@open tcp_packet_tp(head, end, _, _, _, _, _, _);
+	   //@open tcp_packet_full(head, end, _, _, _, _);
+	   //@open tcp_packet_partial(head, end, _, _, _, _);
 		if (ord->destroy_packet)
 			//TODO: Verifast has problems with this - might need pre/post conditions
 			//(*(ord->destroy_packet))(head->data);
@@ -138,6 +139,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 		head = head->next;
 		tmp->next = NULL;
 		free(tmp);
+		//@close tcp_packet_full(head, end, _, _, _, _);
 	}
 
 	free(ord);
@@ -205,6 +207,14 @@ static void insert_packet(tcp_packet_list_t *ord, void *packet,
 	}
 
 	assert(it != NULL);
+	
+	//NOTE: this is just insert, so here is plan:
+	// have our structure
+	//need notion that a packet is "in" the structure - show equiv to : we can split in two on this packet into partial
+	// keep track of it and prev - have that prev.seq <= it.seq and partial(start, prev), partial(it, end) 
+	//with next pointers appropriate (may need to change predicates or have partial(prev, end) or something or split into start -> a -> b -> end (better)
+	// invariant is that seq < it.seq 
+	//todo; verify insertion in dafny and see what invariant should be
 
 }
 

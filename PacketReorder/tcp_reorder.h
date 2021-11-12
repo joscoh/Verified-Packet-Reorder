@@ -112,7 +112,29 @@ typedef struct tcp_pkt {
 //TODO: for now, ignore data field except via exists
 //TODO: may need malloc nodes, cases for null start and end (or in tcp_reorder/separate predicate)
 //TODO: need to handle type now that this may not exist (maybe separate into 2 predicates?)
-/*@ predicate tcp_packet_tp(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq, int plen, double ts) =
+
+//For packets, which form a list, we want to reason about a "partial" list - from a to b, where are nodes are sorted in this list
+//TODO: include type info in here
+/*@ predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq) =
+	start != 0 &*& malloc_block_tcp_pkt(start) &*& start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> ?plen &*& start->ts |-> ?ts 
+	&*& start->data |-> ?data &*& malloc_block(data, plen) &*& chars(data, plen, _) &*&
+	// sortedness comes from here:
+	cmp(seq, bound) > 0 &*& 
+	start->next |-> ?next &*&
+	(start == end ? length == 1 : next != 0 &*& tcp_packet_partial(next, end, length-1, seq, ?type1, ?seq1));
+	      //TODO: can we make more general by quantifying over the bound for next one?
+
+@*/
+//The overall predicate just says that additionally, the last packet points to NULL
+/*@
+
+predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq) =
+	end != 0 &*& end->next |-> 0 &*&
+	tcp_packet_partial(start, end, length, bound, type, seq);
+
+@*/
+
+/* predicate tcp_packet_tp(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq, int plen, double ts) =
 	      end != 0 &*&
 	      malloc_block_tcp_pkt(start) &*&
 	      start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> plen &*& start->ts |-> ts &*& start->data |-> ?data&*& start->next |-> ?next &*&
@@ -121,8 +143,7 @@ typedef struct tcp_pkt {
 	      cmp(seq, bound) > 0 &*& //bound < seq
 	      (start == end ? next == 0 &*& length == 1 :
 	       next != 0 &*& tcp_packet_tp(next, end, length-1, seq, ?type1, ?seq1, ?plen1, ?ts1));
-  @*/
-
+  */
 
 //TODO: see how to handle this
 typedef struct libtrace_packet_t {} libtrace_packet_t;
@@ -169,7 +190,7 @@ typedef struct tcp_reorder {
       reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> ?des &*&
       reorder->list |-> start &*& reorder->list_end |-> end &*&
       start == 0 ? end == 0 && length == 0 :
-      tcp_packet_tp(start, end, length, 0, _, _, _, _);
+      tcp_packet_full(start, end, length, 0, _, _);
 @*/
       
 
