@@ -209,43 +209,58 @@ typedef struct tcp_pkt {
 
 //For packets, which form a list, we  want to reason about a "partial" list - from a to b, where are nodes are sorted in this list
 //TODO: include type info in here
-/*@ predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *next, list<int> contents, int seq) =
+
+//TODO: This is kind of ugly, but we need to be able to separate out the end->seq part and not just have it in the recursive predicate
+//Otherwise, we cannot use end->seq in any lemmas, and we need to do this for upper bounding the list contents
+/*@ 
+	predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq) =
+	start != 0 &*& end != 0 &*&
+	end->seq |-> end_seq &*& end->next |-> end_next &*& inrange(end_seq) == true &*& tcp_packet_partial_aux(start, end, contents, seq);
+
+	predicate tcp_packet_partial_aux(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, int seq) =
 	// start is properly intialized
 	start != 0 &*& malloc_block_tcp_pkt(start) &*& 
 	//fields are initialized
-	start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> ?plen &*& start->ts |-> ?ts &*& 
+	start->type |-> ?t &*& start->plen |-> ?plen &*& start->ts |-> ?ts &*& 
 	// data is initialized
 	start->data |-> ?data &*& malloc_block(data, plen) &*& chars(data, plen, _) &*& 
 	// sortedness/contents
-	inrange(seq) == true &*& sorted(contents) == true &*& contents == cons(?h, ?tl) &*& h == seq &*&
-	// next pointer
-	start->next |-> next &*&
-	// predicate recursively holds
-	(start == end ? tl == nil : next != 0 &*& tcp_packet_partial(next, end, _, tl, ?seq1));
+	sorted(contents) == true &*& contents == cons(?h, ?tl) &*& seq == h &*&
+	// predicate recursively holds - only handle seq and next in recursive case because we handle end separately
+	(start == end ? tl == nil: start->next |-> ?next &*& next != 0 &*& inrange(seq) == true &*& start->seq |-> seq &*& tcp_packet_partial_aux(next, end, tl, ?seq1));
 
 @*/
 //The overall predicate just says that additionally, the last packet points to NULL
 /*@
-
+//TODO: do we need end_seq visible?
 predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, int seq) =
-	end != 0 &*& tcp_packet_partial(start, end, 0, contents, seq);
+	end != 0 &*& tcp_packet_partial(start, end, 0, contents, seq, ?end_seq);
 
 @*/
 
 /*@
 	//We need a few lemmas about tcp_packet_partial:
 	
-	//First, the end node is always non-NULL
-	lemma void partial_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
-	requires tcp_packet_partial(start, end, ?next, ?contents, ?seq);
-	ensures tcp_packet_partial(start, end, next, contents, seq) &*& end != 0;
+	//First, the end node is always non-NULL (needs to be done in 3 stages)
+	lemma void partial_aux_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
+	requires tcp_packet_partial_aux(start, end, ?contents, ?seq);
+	ensures tcp_packet_partial_aux(start, end, contents, seq) &*& end != 0;
 	{
-		open tcp_packet_partial(start, end, next, contents, seq);
+		open tcp_packet_partial_aux(start, end, contents, seq);
 		if(start == end) {
 		} else {
-			partial_end_nonnull(start->next, end);
+			partial_aux_end_nonnull(start->next, end);
 		}
-		close tcp_packet_partial(start, end, next, contents, seq);
+		close tcp_packet_partial_aux(start, end, contents, seq);
+	}
+	
+	lemma void partial_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
+	requires tcp_packet_partial(start, end, ?next, ?contents, ?seq, ?end_seq);
+	ensures tcp_packet_partial(start, end, next, contents, seq, end_seq) &*& end != 0;
+	{
+		open tcp_packet_partial(start, end, next, contents, seq, end_seq);
+		partial_aux_end_nonnull(start, end);
+		close tcp_packet_partial(start, end, next, contents, seq, end_seq);
 	}
 	
 	lemma void full_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
@@ -255,6 +270,14 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 		open tcp_packet_full(start, end, contents, seq);
 		partial_end_nonnull(start, end);
 		close tcp_packet_full(start, end, contents, seq);
+	}
+	
+	//Now, we need to know that all values in the contents list are upper bounded by end->seq
+	lemma void partial_contents_ub(tcp_packet_t *start, tcp_packet_t *end)
+	requires tcp_packet_partial(start, end, ?next, ?contents, ?seq, ?end_seq);
+	ensures tcp_packet_partial(start, end, next, contents, seq, end_seq) &*& ub(end_seq, contents) == true;
+	{
+		assume(false);
 	}
 
 @*/
