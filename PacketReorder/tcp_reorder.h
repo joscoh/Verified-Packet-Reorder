@@ -30,6 +30,8 @@
 
 #include <stdint.h>
 
+//@ #include "listex.gh"
+
 //#include <libtrace.h>
 
 #ifdef __cplusplus
@@ -101,21 +103,32 @@ typedef struct tcp_pkt {
 //Macro in stdint give error because of target-dependent type
 #define UINT32_MAX 4294967295UL 
 
-//The comparison function is essentially arbitrary, but we want an abstract notion
-//of comparison so that we don't have to manually reason about modulo the whole time
-//TODO: can relate this to modulo if we want but will need extra lemmas
-/*@ fixpoint int cmp(int a, int b) {
+//NOTE: this is NOT an accurate representation of cmp because of casting. It doesn't matter for us; we don't use the
+// real definition anywhere. See the Coq file for the true function and related lemmas. We take these lemmas as axioms here
+// because Verifast cannot deal with intentional overflow, but we proved them in Coq
+/*@ fixpoint int cmp(int a, int b);
+/* {
       return (a == b) ? 0 : ((a > b) ? (a - b) : (UINT32_MAX - ((b - a) - 1)));
 }
+*/
 
-	/*lemma void cmp_rev(int a, int b) 
-	requires (0 <= a) && (a <= UINT32_MAX) && (0 <= b) && (b<= UINT32_MAX);
-	ensures cmp(a, b) == -cmp(b, a); //not true ugh
-	{
-		if(a == b) {}
-		else if(a > b) {assert(a-b == -(b-a));}
-		else {assert(b - a )}
-	}*/
+    //To say anything useful about cmp, we need to ensure that all elements in the list are between 0 and 2^31-1. We do so with forall and the following fixpoint
+    
+    fixpoint bool inrange(int x) {
+    	return (0 <= x) && (x <= INT32_MAX);
+    }
+    
+	lemma void cmp_inj(int a, int b);
+	requires (0 <= a) && (a <= UINT32_MAX) && (0 <= b) && (b <= UINT32_MAX) && cmp(a,b) == 0;
+	ensures a == b;
+
+	lemma void cmp_antisym1(int a, int b);
+	requires inrange(a) == true && inrange(b) == true && cmp(a,b) > 0;
+	ensures cmp(b,a) < 0; 
+	
+	lemma void cmp_antisym2(int a, int b);
+	requires inrange(a) == true && inrange(b) == true && cmp(a,b) < 0;
+	ensures cmp(b,a) > 0; 
 
 @*/
 
@@ -127,7 +140,7 @@ typedef struct tcp_pkt {
 			case nil: return true;
 			case cons(h, t): return switch(t) {
 						case nil: return true;
-						case cons(h', t'): return cmp(h', h) >= 0 && sorted(t);
+						case cons(h', t'): return cmp(h', h) > 0 && sorted(t);
 					};
 		}
     }
@@ -135,28 +148,32 @@ typedef struct tcp_pkt {
     fixpoint list<int> insert(int x, list<int> l) {
     	switch(l) {
     		case nil: return cons(x, nil);
-    		case cons(h, t): return cmp(h, x) >= 0 ? cons(x, l) : cons(h, insert(x, t));
+    		case cons(h, t): return cmp(h, x) > 0 ? cons(x, l) : cons(h, insert(x, t));
     	}
     }
     
+    
+
+    
     // insert preserves sortedness
     lemma void insert_sorted(int x, list<int> l) 
-    requires sorted(l) == true;
+    requires sorted(l) == true && forall(l, inrange) && !mem(x, l) && inrange(x) == true;
     ensures sorted(insert(x, l)) == true;
     {
     	switch(l) {
     		case nil: assert(sorted(insert(x, l)) == true);
     		case cons(h, t): 
-    			if(cmp(h, x) >= 0) {assert(sorted(insert(x, l)) == true);}
+    			if(cmp(h, x) > 0) {}
+    			else if(cmp(h, x) == 0) { 
+    				cmp_inj(h, x);
+    			}
     			else {
+    				forall_mem(h, l, inrange);
+					cmp_antisym2(h, x);
     				switch(t) {
     					case nil:
-    					assert(insert(x, l) == cons(h, cons(x, nil)));
-    					//how to layer the cmp and destruct?
-    					  assert(sorted(insert(x, l)) == true);
     					case cons(h', t'):
     						insert_sorted(x, t);
-    						assert(sorted(insert(x, l)) == true);	
     				}
     			}
     	}
@@ -188,40 +205,35 @@ typedef struct tcp_pkt {
 	
 
 //TODO: for now, ignore data field except via exists
-//TODO: may need malloc nodes, cases for null start and end (or in tcp_reorder/separate predicate)
 //TODO: need to handle type now that this may not exist (maybe separate into 2 predicates?)
 
-//For packets, which form a list, we want to reason about a "partial" list - from a to b, where are nodes are sorted in this list
+//For packets, which form a list, we  want to reason about a "partial" list - from a to b, where are nodes are sorted in this list
 //TODO: include type info in here
-/*@ predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq) =
-	start != 0 &*& malloc_block_tcp_pkt(start) &*& start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> ?plen &*& start->ts |-> ?ts 
-	&*& start->data |-> ?data &*& malloc_block(data, plen) &*& chars(data, plen, _) &*&
-	// sortedness comes from here:
-	cmp(seq, bound) > 0 &*& 
+/*@ predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, tcp_type type, int seq) =
+	// start is properly intialized
+	start != 0 &*& malloc_block_tcp_pkt(start) &*& 
+	//fields are initialized
+	start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> ?plen &*& start->ts |-> ?ts &*&
+	// data is initialized
+	start->data |-> ?data &*& malloc_block(data, plen) &*& chars(data, plen, _) &*& 
+	// sortedness/contents
+	inrange(seq) == true &*& sorted(contents) == true &*& contents == cons(?h, ?tl) &*& h == seq &*&
+	// next pointer
 	start->next |-> ?next &*&
-	(start == end ? length == 1 : next != 0 &*& tcp_packet_partial(next, end, length-1, seq, ?type1, ?seq1));
-	      //TODO: can we make more general by quantifying over the bound for next one?
+	// predicate recursively holds
+	(start == end ? tl == nil : next != 0 &*& tcp_packet_partial(next, end, tl, ?type1, ?seq1));
 
 @*/
 //The overall predicate just says that additionally, the last packet points to NULL
 /*@
 
-predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq) =
+predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, tcp_type type, int seq) =
 	end != 0 &*& end->next |-> 0 &*&
-	tcp_packet_partial(start, end, length, bound, type, seq);
+	tcp_packet_partial(start, end, contents, type, seq);
 
 @*/
 
-/* predicate tcp_packet_tp(tcp_packet_t *start, tcp_packet_t *end, int length, int bound, tcp_type type, int seq, int plen, double ts) =
-	      end != 0 &*&
-	      malloc_block_tcp_pkt(start) &*&
-	      start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> plen &*& start->ts |-> ts &*& start->data |-> ?data&*& start->next |-> ?next &*&
-	      malloc_block(data, plen) &*& chars(data, plen, _) &*&
-	      //sortedness comes from here:
-	      cmp(seq, bound) > 0 &*& //bound < seq
-	      (start == end ? next == 0 &*& length == 1 :
-	       next != 0 &*& tcp_packet_tp(next, end, length-1, seq, ?type1, ?seq1, ?plen1, ?ts1));
-  */
+
 
 //TODO: see how to handle this
 typedef struct libtrace_packet_t {} libtrace_packet_t;
@@ -260,15 +272,15 @@ typedef struct tcp_reorder {
 
 } tcp_packet_list_t;
 
-//TODO: see what params we need here/in the previous predicate
-//TODO: include list of elements? (maybe later - need to sort it)
-//TODO: malloc
-/*@ predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, int exp_seq, int length, tcp_packet_t *start, tcp_packet_t *end) =
+//TODO: maybe change params but I think ok (maybe can say something about create/destroy to deal with that, maybe not)
+/*@ predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end) =
       malloc_block_tcp_reorder(reorder) &*&
-      reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> ?des &*&
-      reorder->list |-> start &*& reorder->list_end |-> end &*&
+      //fields initialized
+      reorder->expected_seq |-> _ &*& reorder->list_len |-> ?length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
+      reorder->list |-> start &*& reorder->list_end |-> end &*& length(contents) == length &*&
+      // either empty or well-formed packet
       start == 0 ? end == 0 && length == 0 :
-      tcp_packet_full(start, end, length, 0, _, _);
+      tcp_packet_full(start, end, contents, _, _);
 @*/
       
 
