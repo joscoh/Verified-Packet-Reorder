@@ -99,3 +99,65 @@ Proof.
     rewrite Hmod. destruct (zlt (Int.modulus - (b - a)) Int.half_modulus); rep_lia.
 Qed.
 
+(*From the above, we can see that this is not a true ordering, since it is not always transitive and
+  antisymetric, as the following lemmas show:*)
+
+(*We need |a-b| <> 2^31 in order to get antisymmetry*)
+Lemma compare_antisym: forall a b,
+  0 <= a <= Int.max_unsigned ->
+  0 <= b <= Int.max_unsigned ->
+  Z.abs (a - b) <> Int.half_modulus ->
+  (Int.signed (Int.repr (compare a b)) > 0) <-> (Int.signed (Int.repr (compare b a)) < 0).
+Proof.
+  intros a b Ha Hb Hab1. pose proof (compare_cases a b Ha Hb) as [Hgt [_ _]].
+  rewrite Hgt. pose proof (compare_cases b a Hb Ha) as [_ [Hlt _]]. rewrite Hlt.
+  split; intros [Hfst | Hsnd].
+  - right. lia.
+  - left. lia.
+  - right. lia.
+  - left. lia.
+Qed.
+
+(*We need to make sure all values are within 2^31 or outside of 2^31 from each other to get transitivity*)
+(*TODO: do we need other transitivity? (for lt)*)
+Lemma compare_trans: forall a b c,
+  0 <= a <= Int.max_unsigned ->
+  0 <= b <= Int.max_unsigned ->
+  0 <= c <= Int.max_unsigned ->
+  (Z.abs (a - b) <= Int.half_modulus /\ Z.abs (b - c) <= Int.half_modulus /\ Z.abs (a - c) < Int.half_modulus) \/
+  (Z.abs (a - b) >= Int.half_modulus /\ Z.abs (b - c) >= Int.half_modulus /\ Z.abs (a - c) >= Int.half_modulus) ->
+  (Int.signed (Int.repr (compare a b)) > 0) ->
+  (Int.signed (Int.repr (compare b c)) > 0) ->
+  (Int.signed (Int.repr (compare a c)) > 0).
+Proof.
+  intros a b c Ha Hb Hc Hmod. pose proof (compare_cases a b Ha Hb) as [Hgt1 _]. rewrite Hgt1. clear Hgt1.
+  pose proof (compare_cases b c Hb Hc) as [Hgt2 _]. rewrite Hgt2. clear Hgt2.
+  pose proof (compare_cases a c Ha Hc) as [Hgt3 _]. rewrite Hgt3. clear Hgt3.
+  intros [Hab1 | Hab2]; intros [Hbc1 |Hbc2]; lia.
+Qed.
+
+(*This is OK for TCP purposes; this just means that we cannot exceed 2^31 packets simeltaneously. This would not
+  happen because of limits on inflight data. But it means that we have to be careful in our proofs; the ordering
+  algorithm will not work unless this condition is met.*)
+
+(*For our purposes, we will assume all sequence numbers are within the range [0, 2^31-1]. The following lemmas show 
+  this assumption makes it a valid comparison *)
+Lemma compare_antisym_signed: forall a b,
+  0 <= a <= Int.max_signed ->
+  0 <= b <= Int.max_signed ->
+  (Int.signed (Int.repr (compare a b)) > 0) <-> (Int.signed (Int.repr (compare b a)) < 0).
+Proof.
+  intros a b Ha Hb. apply compare_antisym; rep_lia.
+Qed.
+
+Lemma compare_trans_signed: forall a b c,
+  0 <= a <= Int.max_signed ->
+  0 <= b <= Int.max_signed ->
+  0 <= c <= Int.max_signed ->
+  (Int.signed (Int.repr (compare a b)) > 0) ->
+  (Int.signed (Int.repr (compare b c)) > 0) ->
+  (Int.signed (Int.repr (compare a c)) > 0).
+Proof.
+  intros a b c Ha Hb Hc. apply compare_trans; rep_lia.
+Qed.
+  
