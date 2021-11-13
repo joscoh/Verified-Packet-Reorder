@@ -107,7 +107,85 @@ typedef struct tcp_pkt {
 /*@ fixpoint int cmp(int a, int b) {
       return (a == b) ? 0 : ((a > b) ? (a - b) : (UINT32_MAX - ((b - a) - 1)));
 }
+
+	/*lemma void cmp_rev(int a, int b) 
+	requires (0 <= a) && (a <= UINT32_MAX) && (0 <= b) && (b<= UINT32_MAX);
+	ensures cmp(a, b) == -cmp(b, a); //not true ugh
+	{
+		if(a == b) {}
+		else if(a > b) {assert(a-b == -(b-a));}
+		else {assert(b - a )}
+	}*/
+
 @*/
+
+/*@
+// We want to say that the list (of sequence numbers) is (strongly) sorted. We define a sorted predicate and a function to insert into a sorted list
+
+ 	fixpoint bool sorted(list<int> l) {
+		switch(l) {
+			case nil: return true;
+			case cons(h, t): return switch(t) {
+						case nil: return true;
+						case cons(h', t'): return cmp(h', h) >= 0 && sorted(t);
+					};
+		}
+    }
+    
+    fixpoint list<int> insert(int x, list<int> l) {
+    	switch(l) {
+    		case nil: return cons(x, nil);
+    		case cons(h, t): return cmp(h, x) >= 0 ? cons(x, l) : cons(h, insert(x, t));
+    	}
+    }
+    
+    // insert preserves sortedness
+    lemma void insert_sorted(int x, list<int> l) 
+    requires sorted(l) == true;
+    ensures sorted(insert(x, l)) == true;
+    {
+    	switch(l) {
+    		case nil: assert(sorted(insert(x, l)) == true);
+    		case cons(h, t): 
+    			if(cmp(h, x) >= 0) {assert(sorted(insert(x, l)) == true);}
+    			else {
+    				switch(t) {
+    					case nil:
+    					assert(insert(x, l) == cons(h, cons(x, nil)));
+    					//how to layer the cmp and destruct?
+    					  assert(sorted(insert(x, l)) == true);
+    					case cons(h', t'):
+    						insert_sorted(x, t);
+    						assert(sorted(insert(x, l)) == true);	
+    				}
+    			}
+    	}
+    }
+    
+    //Now we want to define the notion of upper and lower bounds on a list, with the following:
+    //NOTE: cannot define with forall because of lack of partial application
+    //upper bound
+    fixpoint bool ub(int x, list<int> l) {
+    	switch(l) {
+    		case nil: return true;
+    		case cons(h, t): return cmp(x, h) >= 0 && ub(x, t);
+    	}
+    }
+    
+    fixpoint bool lb(int x, list<int> l) {
+    	switch(l) {
+    		case nil: return true;
+    		case cons(h, t): return cmp(h, x) >= 0 && lb(x, t);
+    	}
+    }
+    
+    //Lemmas about sorting and bounds:
+    
+    
+    
+
+@*/
+	
 
 //TODO: for now, ignore data field except via exists
 //TODO: may need malloc nodes, cases for null start and end (or in tcp_reorder/separate predicate)

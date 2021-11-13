@@ -1,0 +1,3 @@
+-R . lib
+seq_cmp.v
+Verif_seq_cmp.v
