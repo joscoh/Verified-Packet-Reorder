@@ -126,9 +126,9 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 	
 	/* Free any packets we may still be hanging onto */
 	while (head != NULL)
-	//@invariant ord->destroy_packet |-> _ &*& head == 0 ? true : tcp_packet_full(head, end, _, _, _);
+	//@invariant ord->destroy_packet |-> _ &*& head == 0 ? true : tcp_packet_full(head, end, _, _);
 	   {
-	   //@open tcp_packet_full(head, end, _, _, _);
+	   //@open tcp_packet_full(head, end, _, _);
 	   //@open tcp_packet_partial(head, end, _, _, _);
 		if (ord->destroy_packet)
 			//TODO: Verifast has problems with this - might need pre/post conditions
@@ -140,7 +140,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 		head = head->next;
 		tmp->next = NULL;
 		free(tmp);
-		//@close tcp_packet_full(head, end, _, _, _);
+		///@close tcp_packet_full(head, end, _, _, _);
 	}
 
 	free(ord);
@@ -157,10 +157,18 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
  * 	ts - the timestamp of the packet
  * 	type - the packet type, e.g. SYN, FIN, RST, retransmit
  */
-static void insert_packet(tcp_packet_list_t *ord, void *packet, 
-		uint32_t seq, uint32_t plen, double ts, tcp_reorder_t type) {
+ //JOSH - changed to int to reflect error state - malloc not working
+static int insert_packet(tcp_packet_list_t *ord, void *packet, 
+		uint32_t seq, uint32_t plen, double ts, tcp_reorder_t type)
+//@requires tcp_packet_list_tp(ord, ?l, ?start, ?end) &*& malloc_block(packet, plen) &*& chars(packet, plen, _) &*& inrange(seq) == true &*& !mem(seq, l);
+/*@ ensures result == 0 ? 
+	tcp_packet_list_tp(ord, l, start, end) &*& malloc_block(packet, plen) &*& chars(packet, plen, _) 
+	: tcp_packet_list_tp(ord, insert(seq, l), ?start1, ?end1); @*/
+{
 
 	tcp_packet_t *tpkt = (tcp_packet_t *)malloc(sizeof(tcp_packet_t));
+	//JOSH - added
+	if(tpkt == 0) return 0;
 	tcp_packet_t *it = NULL;
 	tcp_packet_t *prev = NULL;
 
@@ -169,20 +177,30 @@ static void insert_packet(tcp_packet_list_t *ord, void *packet,
 	tpkt->plen = plen;
 	tpkt->data = packet;
 	tpkt->ts = ts;
+	
+	//@open tcp_packet_list_tp(ord, l, start, end);
 
 	/* If we're the first thing to go into the list, this is pretty easy */
 	if (ord->list == NULL) {
+		//@ assert(l==nil);
 		tpkt->next = NULL;
 		ord->list = tpkt;
 		ord->list_end = tpkt;
 		ord->list_len += 1;
-		return;
+		//@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _);
+		//@close tcp_packet_full(tpkt, tpkt, insert(seq, nil), _);
+		//@close tcp_packet_list_tp(ord, insert(seq, nil), tpkt, tpkt);
+		return 1;
 
 	}
+	
 
 	/* A lot of inserts should be at the end of the list */
 	it = ord->list_end;
+	//@full_end_nonnull(start, end);
 	assert(it != NULL);
+	
+	//@ assume(false);
 
 	if (seq_cmp(seq, it->seq) >= 0) {
 		tpkt->next = NULL;
@@ -190,7 +208,7 @@ static void insert_packet(tcp_packet_list_t *ord, void *packet,
 
 		ord->list_end = tpkt;
 		ord->list_len += 1;
-		return;
+		return 1;
 	}
 
 	/* Otherwise, find the appropriate spot for the packet in the list */
@@ -202,7 +220,7 @@ static void insert_packet(tcp_packet_list_t *ord, void *packet,
 			else
 				ord->list = tpkt;
 			ord->list_len += 1;
-			return;
+			return 1;
 		}
 		prev = it;
 	}

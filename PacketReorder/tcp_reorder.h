@@ -209,27 +209,53 @@ typedef struct tcp_pkt {
 
 //For packets, which form a list, we  want to reason about a "partial" list - from a to b, where are nodes are sorted in this list
 //TODO: include type info in here
-/*@ predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, tcp_type type, int seq) =
+/*@ predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *next, list<int> contents, int seq) =
 	// start is properly intialized
 	start != 0 &*& malloc_block_tcp_pkt(start) &*& 
 	//fields are initialized
-	start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> ?plen &*& start->ts |-> ?ts &*&
+	start->type |-> ?t &*& start->seq |-> seq &*& start->plen |-> ?plen &*& start->ts |-> ?ts &*& 
 	// data is initialized
 	start->data |-> ?data &*& malloc_block(data, plen) &*& chars(data, plen, _) &*& 
 	// sortedness/contents
 	inrange(seq) == true &*& sorted(contents) == true &*& contents == cons(?h, ?tl) &*& h == seq &*&
 	// next pointer
-	start->next |-> ?next &*&
+	start->next |-> next &*&
 	// predicate recursively holds
-	(start == end ? tl == nil : next != 0 &*& tcp_packet_partial(next, end, tl, ?type1, ?seq1));
+	(start == end ? tl == nil : next != 0 &*& tcp_packet_partial(next, end, _, tl, ?seq1));
 
 @*/
 //The overall predicate just says that additionally, the last packet points to NULL
 /*@
 
-predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, tcp_type type, int seq) =
-	end != 0 &*& end->next |-> 0 &*&
-	tcp_packet_partial(start, end, contents, type, seq);
+predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, int seq) =
+	end != 0 &*& tcp_packet_partial(start, end, 0, contents, seq);
+
+@*/
+
+/*@
+	//We need a few lemmas about tcp_packet_partial:
+	
+	//First, the end node is always non-NULL
+	lemma void partial_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
+	requires tcp_packet_partial(start, end, ?next, ?contents, ?seq);
+	ensures tcp_packet_partial(start, end, next, contents, seq) &*& end != 0;
+	{
+		open tcp_packet_partial(start, end, next, contents, seq);
+		if(start == end) {
+		} else {
+			partial_end_nonnull(start->next, end);
+		}
+		close tcp_packet_partial(start, end, next, contents, seq);
+	}
+	
+	lemma void full_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
+	requires tcp_packet_full(start, end, ?contents, ?seq);
+	ensures tcp_packet_full(start, end, contents, seq) &*& end != 0;
+	{
+		open tcp_packet_full(start, end, contents, seq);
+		partial_end_nonnull(start, end);
+		close tcp_packet_full(start, end, contents, seq);
+	}
 
 @*/
 
@@ -279,8 +305,8 @@ typedef struct tcp_reorder {
       reorder->expected_seq |-> _ &*& reorder->list_len |-> ?length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
       reorder->list |-> start &*& reorder->list_end |-> end &*& length(contents) == length &*&
       // either empty or well-formed packet
-      start == 0 ? end == 0 && length == 0 :
-      tcp_packet_full(start, end, contents, _, _);
+      start == 0 ? end == 0 && contents == nil:
+       	tcp_packet_full(start, end, contents, _);
 @*/
       
 
