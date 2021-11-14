@@ -129,8 +129,9 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 	//@invariant ord->destroy_packet |-> _ &*& head == 0 ? true : tcp_packet_full(head, end, _, _);
 	   {
 	   //@open tcp_packet_full(head, end, _, _);
-	   //@open tcp_packet_partial(head, end, _, _, _, _);
-	   //@open tcp_packet_partial_aux(head, end, _, _);
+	   //@open tcp_packet_partial(head, end, _, _, _);
+	   //@open tcp_packet_single(head, _);
+	   ///@open tcp_packet_partial_aux(head, end, _, _);
 		if (ord->destroy_packet)
 			//TODO: Verifast has problems with this - might need pre/post conditions
 			//(*(ord->destroy_packet))(head->data);
@@ -143,7 +144,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 		free(tmp);
 		/*@
 		if(head != 0) {
-			close tcp_packet_partial(head, end, _, _, _, _);
+			//close tcp_packet_partial(head, end, _, _, _);
 			close tcp_packet_full(head, end, _, _);
 		}
 		@*/
@@ -193,8 +194,9 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		ord->list = tpkt;
 		ord->list_end = tpkt;
 		ord->list_len += 1;
-		//@close tcp_packet_partial_aux(tpkt, tpkt, insert(seq, nil), _);
-		//@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _, _);
+		///@close tcp_packet_partial_aux(tpkt, tpkt, insert(seq, nil), _);
+		//@close tcp_packet_single(tpkt, _);
+		//@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _);
 		//@close tcp_packet_full(tpkt, tpkt, insert(seq, nil), _);
 		//@close tcp_packet_list_tp(ord, insert(seq, nil), tpkt, tpkt);
 		return 1;
@@ -203,12 +205,14 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 
 	/* A lot of inserts should be at the end of the list */
 	it = ord->list_end;
-	//@full_end_nonnull(start, end);
+	//@ open tcp_packet_full(start, end, l, _);
+	///@full_end_nonnull(start, end);
 	assert(it != NULL);
 	
-	//@ open tcp_packet_full(start, end, l, _);
-	//@ open tcp_packet_partial(start, end, 0, l, ?start_seq, ?end_seq);
-	//@open tcp_packet_partial_aux(start, end, l, start_seq);
+	
+	//@ open tcp_packet_partial(start, end, 0, l, ?start_seq);
+	//@assume(false);
+	///@open tcp_packet_partial_aux(start, end, l, start_seq);
 	if (seq_cmp(seq, it->seq) >= 0) {
 		tpkt->next = NULL;
 		it->next = tpkt;
