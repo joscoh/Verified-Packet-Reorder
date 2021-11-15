@@ -179,6 +179,41 @@ typedef struct tcp_pkt {
     	}
     }
     
+    //If (l1 ++ l2) is sorted, then l1 is sorted and l2 is sorted
+    lemma void sorted_app1(list<int> l1, list<int> l2)
+    requires sorted(append(l1, l2)) == true;
+    ensures sorted(l1) == true;
+    {
+    	switch(l1) {
+    		case nil:
+    		case cons(h1, t1): 
+    			switch(t1) {
+    				case nil:
+    				case cons(h2, t2):
+    					sorted_app1(t1, l2);
+    			}
+    	}
+    }
+    
+    lemma void sorted_app2(list<int> l1, list<int> l2)
+    requires sorted(append(l1, l2)) == true;
+    ensures sorted(l2) == true;
+    {
+    	switch(l1) {
+    		case nil:
+    		case cons(h1, t1): 
+    			switch(t1) {
+    				case nil:
+    					switch(l2) {
+    						case nil:
+    						case cons(h2, t2):
+						}
+    				case cons(h2, t2):
+    					sorted_app2(t1, l2);
+    			}
+    	}
+    }
+    
     //Now we want to define the notion of upper and lower bounds on a list, with the following:
     //NOTE: cannot define with forall because of lack of partial application
     //upper bound
@@ -225,11 +260,80 @@ typedef struct tcp_pkt {
 	
 	
 	predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq) =
-	tcp_packet_single(start, seq) &*& end != 0 &*& start->next |-> ?next &*&
+	tcp_packet_single(start, seq) &*& start->next |-> ?next &*&
 	// sortedness/contents
 	sorted(contents) == true &*& contents == cons(?h, ?tl) &*& seq == h &*&
 	// predicate recursively holds - only handle seq and next in recursive case because we handle end separately
 	(start == end ? tl == nil && next == end_next: next != 0 &*& tcp_packet_partial(next, end, end_next, tl, ?seq1));
+	
+	//Alternatively, in some cases, we instead need to access the end packet (and crucially, sequence number). We define an alternate partial predicate and then prove equivalence:
+	predicate tcp_packet_partial_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq) =
+	tcp_packet_single(end, end_seq) &*& end != 0 &*& end->next |-> end_next &*& sorted(contents) == true &*&
+	(start == end ? contents == cons(end_seq, nil) && seq == end_seq
+	: tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq) &*& drop(length(contents) - 1, contents) == cons(end_seq, nil)); 
+	
+	//We prove equivalence in two lemmas. These are quite annoying to prove:
+	lemma void partial_start_implies_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq)
+	requires tcp_packet_partial(start, end, end_next, contents, seq);
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, ?end_seq);
+	{
+		if(start == end) {
+			open tcp_packet_partial(start, end, end_next, contents, seq);
+			open tcp_packet_single(start, seq);
+			int end_seq = end->seq;
+			assert(seq == end_seq);
+			close tcp_packet_single(end, end_seq);
+			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		}
+		else {
+			open tcp_packet_partial(start, end, end_next, contents, seq);
+			tcp_packet_t *next = start->next;
+			list<int> tl = tail(contents);
+			//Get next->seq as a variable
+			open tcp_packet_partial(next, end, end_next, tl, ?seq1);
+			close tcp_packet_partial(next, end, end_next, tl, seq1);
+			
+			partial_start_implies_end(next, end, end_next, tl, seq1);
+			open tcp_packet_partial_end(next, end, end_next, tl, seq1, ?end_seq);
+			if(next == end) {
+				
+				assert(contents == cons(seq, cons(end_seq, nil)));
+				//get that start != 0
+				open tcp_packet_single(start, seq);
+				assert(start != 0);
+				close tcp_packet_single(start, seq);
+				
+				//close tcp_packet_partial(next, next, end, 
+				close tcp_packet_partial(start, start, end, cons(seq, nil), seq);
+				close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			}
+			else {
+				//The inductive case
+				//lets go backwards for a bit
+				//to get pen in the context
+				assert(tcp_packet_partial(next, ?pen, end, take(length(tail(contents)) - 1, tail(contents)), seq1));
+				assert(sorted(append(take(length(contents) - 1, contents), drop(length(contents) -1, contents))) == true);
+				sorted_app1(take(length(contents) - 1, contents), drop(length(contents) -1, contents));
+				//want to show start != pen
+				if(start == pen) {
+					//in this case, we have start -> next -> pen = start, so we have a cycle
+					assert(start->next == next);
+					//we need to get pen->next to show it is end, so we apply IH again
+					partial_start_implies_end(next, pen, end, take((length(tail(contents)) - 1), tail(contents)), seq1);
+					open tcp_packet_partial_end(next, pen, end, take((length(tail(contents)) - 1), tail(contents)), seq1, ?end_seq1);
+					//assert(next->next == pen);
+					assert(start->next == end);
+					assert(end == next); //contradiction
+				}
+				else {
+					assert(start != pen);
+					close tcp_packet_partial(start, pen, end, take((length(contents) - 1), contents), seq);
+					close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+				}
+			}
+		}
+	}
+	
 
 @*/
 //The overall predicate just says that additionally, the last packet points to NULL
