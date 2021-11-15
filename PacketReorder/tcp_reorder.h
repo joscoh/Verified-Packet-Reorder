@@ -422,12 +422,138 @@ typedef struct tcp_pkt {
 			open tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), ?seq1);
 			close tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), seq1); 
 			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
-			
 		}
-		
 	}
 	
-
+	//We need the converse as well:
+	lemma void tcp_partial_packet_end_fold(tcp_packet_t *start, tcp_packet_t *next, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int seq1, int end_seq)
+	requires tcp_packet_single(start, seq) &*& start->next |-> next &*& contents == cons(seq, ?tl) &*& sorted(contents) == true &*&
+	 		 tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& start != end;
+	{
+		if(start == end) {
+			//contradiction with 2 start->next blocks
+			open tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
+			assert(false);
+		}
+		else {
+			open tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
+			if(next == end) {
+				close tcp_packet_partial(start, start, end, take(length(contents) - 1, contents), seq);
+				close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			}
+			else {
+				//get pen in context
+				open tcp_packet_partial(next, ?pen, end, take(length(tl) - 1, tl), seq1);
+				close tcp_packet_partial(next, pen, end, take(length(tl) - 1, tl), seq1);
+				
+				//prove sorted (TODO: make separate lemma?)
+				length_pos(tl);
+				append_drop_take(contents, length(contents) - 1);
+				sorted_app1(take(length(contents) - 1, contents), drop(length(contents) -1, contents));
+				
+				//prove that next != 0
+				open tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1);
+				open tcp_packet_single(next, seq1);
+				assert(next != 0);
+				close tcp_packet_single(next, seq1);
+				close tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1);
+				
+				//prove that start != pen
+				if(start == pen) {
+					//again, contradiction in separation logic
+					partial_start_implies_end(next, pen, end, take((length(tl) - 1), tl), seq1);
+					open tcp_packet_partial_end(next, pen, end, take((length(tl) - 1), tl), seq1, ?end_seq1);
+					assert(false);
+				}
+				else {
+					close tcp_packet_partial(start, pen, end, cons(seq, take(length(tl) - 1, tl)), seq);
+					close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+				}
+			}
+			
+		}
+	}
+	
+	//TODO: move
+	lemma void partial_start_nonzero(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq)
+	requires tcp_packet_partial(start, end, end_next, contents, seq);
+	ensures tcp_packet_partial(start, end, end_next, contents, seq) &*& start != 0;
+	{
+		open tcp_packet_partial(start, end, end_next, contents, seq);
+		open tcp_packet_single(start, seq);
+		assert(start != 0);
+		close tcp_packet_single(start, seq);
+		close tcp_packet_partial(start, end, end_next, contents, seq);
+	}
+	
+	
+	// Another crucial lemma - we can combine two partial_end predicates (it helps to have the start and end nodes available)
+	lemma void partial_app(tcp_packet_t *start, tcp_packet_t *p1, tcp_packet_t *p2, tcp_packet_t *end, tcp_packet_t *end_next, list<int> l1, list<int> l2, 
+		int seq1, int seq2, int end_seq1, int end_seq2)
+	requires tcp_packet_partial_end(start, p1, p2, l1, seq1, end_seq1) &*& tcp_packet_partial_end(p2, end, end_next, l2, seq2, end_seq2) &*& sorted(append(l1, l2)) == true;
+	ensures tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_seq2);
+	{
+		if(start == p1) {
+			open tcp_packet_partial_end(start, p1, p2, l1, seq1, end_seq1);
+			open tcp_packet_partial_end(p2, end, end_next, l2, seq2, end_seq2);
+			if(p2 == end) {
+				close tcp_packet_partial(start, start, end, take((length(append(l1, l2)) - 1), append(l1, l2)), seq1);
+				close tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_seq2);
+			}
+			else {
+				//get pen in context
+				open tcp_packet_partial(p2, ?pen, end, take(length(l2) - 1, l2), seq2);
+				close tcp_packet_partial(p2, pen, end, take(length(l2) - 1, l2), seq2);
+				
+				//need to prove sorted(seq1 :: take(length(l2) - 1, l2))
+				length_pos(l2);
+				append_drop_take(l2, length(l2) - 1);
+				append_assoc(l1, take(length(l2) -1, l2), drop(length(l2) -1, l2));
+				sorted_app1(append(l1, take(length(l2) - 1, l2)), drop(length(l2) - 1, l2));
+				
+				//prove p2 != 0
+				partial_start_nonzero(p2, pen, end, take((length(l2) - 1), l2), seq2);
+				//need to prove that start != pen
+				if(start == pen) {
+					//if it is, then start->next = p2 and pen->next = end, so p2 = end, contradiction
+					partial_start_implies_end(p2, pen, end, take(length(l2) - 1, l2), seq2);
+					open tcp_packet_partial_end(p2, pen, end, take(length(l2) - 1, l2), seq2, ?end_seq3);
+					assert(p2 == end);
+				}
+				else {
+					close tcp_packet_partial(start, pen, end, cons(seq1,take(length(l2) - 1, l2)), seq1); 
+					close tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_seq2);
+				}
+			}
+		}
+		else {
+			//inductive case
+			tcp_partial_packet_end_ind(start, p1, p2, l1, seq1, end_seq1);
+			//get next and seq1 in context
+			tcp_packet_t *next = start->next;
+			open tcp_packet_partial_end(next, p1, p2, tail(l1), ?seq12, end_seq1);
+			close tcp_packet_partial_end(next, p1, p2, tail(l1), seq12, end_seq1);
+			
+			//we want to show end != next
+			if(next == end) {
+				//want to get end->next and next->next heap chunks to prove false (must be disjoint)
+				open tcp_packet_partial_end(p2, end, end_next, l2, seq2, end_seq2); //end->next chunk
+				//easiest way is to use previous lemma (though it's not strictly needed)
+				partial_end_implies_start(next, p1, p2, tail(l1), seq12, end_seq1);
+				open tcp_packet_partial(next, p1, p2, tail(l1), seq12);
+				assert(false);
+			}
+			else {
+				assert(tail(append(l1, l2)) == append(tail(l1), l2));
+				sorted_tail(append(l1, l2));
+				partial_app(next, p1, p2, end, end_next, tail(l1), l2, seq12, seq2, end_seq1, end_seq2); 
+				//combine result back into full predicate
+				tcp_partial_packet_end_fold(start, next, end, end_next, append(l1, l2), seq1, seq12, end_seq2);
+			}
+		}
+	}
+	
 @*/
 //The overall predicate just says that additionally, the last packet points to NULL
 /*@
@@ -437,38 +563,7 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 @*/
 
 /*@
-	//We need a few lemmas about tcp_packet_partial:
-	/*
-	//First, the end node is always non-NULL (needs to be done in 3 stages)
-	lemma void partial_aux_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
-	requires tcp_packet_partial_aux(start, end, ?contents, ?seq);
-	ensures tcp_packet_partial_aux(start, end, contents, seq) &*& end != 0;
-	{
-		open tcp_packet_partial_aux(start, end, contents, seq);
-		if(start == end) {
-		} else {
-			partial_aux_end_nonnull(start->next, end);
-		}
-		close tcp_packet_partial_aux(start, end, contents, seq);
-	}
 	
-	lemma void partial_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
-	requires tcp_packet_partial(start, end, ?next, ?contents, ?seq, ?end_seq);
-	ensures tcp_packet_partial(start, end, next, contents, seq, end_seq) &*& end != 0;
-	{
-		open tcp_packet_partial(start, end, next, contents, seq, end_seq);
-		partial_aux_end_nonnull(start, end);
-		close tcp_packet_partial(start, end, next, contents, seq, end_seq);
-	}
-	
-	lemma void full_end_nonnull(tcp_packet_t *start, tcp_packet_t *end)
-	requires tcp_packet_full(start, end, ?contents, ?seq);
-	ensures tcp_packet_full(start, end, contents, seq) &*& end != 0;
-	{
-		open tcp_packet_full(start, end, contents, seq);
-		partial_end_nonnull(start, end);
-		close tcp_packet_full(start, end, contents, seq);
-	}*/
 	
 	//Now, we need to know that all values in the contents list are upper bounded by end->seq. This requires 2 parts
 	/*lemma void partial_end_contents_mem(tcp_packet_t *start, tcp_packet_t *end, int end_seq)
