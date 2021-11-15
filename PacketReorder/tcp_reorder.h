@@ -214,6 +214,18 @@ typedef struct tcp_pkt {
     	}
     }
     
+    //A special case that is useful:
+    lemma void sorted_tail(list<int> l)
+    requires sorted(l) == true;
+    ensures sorted(tail(l)) == true;
+    {
+    	switch(l) {
+    		case nil:
+    		case cons(h, t):
+    			sorted_app2(cons(h, nil), t);
+    	}
+    }
+    
     //Now we want to define the notion of upper and lower bounds on a list, with the following:
     //NOTE: cannot define with forall because of lack of partial application
     //upper bound
@@ -371,9 +383,10 @@ typedef struct tcp_pkt {
 				close tcp_packet_partial(start, end, end_next, contents, seq);
 			}
 			else {
+				sorted_tail(contents);
 				assert(contents == cons(?seq2, tail(contents)));
 				assert(contents == append(cons(seq2, nil), tail(contents)));
-				sorted_app2(cons(seq2, nil), tail(contents));
+				//sorted_app2(cons(seq2, nil), tail(contents));
 				//need seq1 in context
 				open tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), ?seq1);
 				close tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), seq1);
@@ -383,6 +396,35 @@ typedef struct tcp_pkt {
 				close tcp_packet_partial(start, end, end_next, contents, seq);
 			}
 		}
+	}
+	
+	//For using tcp_partial_end, we want to reason recursively, so the following lemma is helpful
+	lemma void tcp_partial_packet_end_ind(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& start != end;
+	ensures tcp_packet_single(start, seq) &*& start->next |-> ?next &*& contents == cons(seq, ?tl) &*& tcp_packet_partial_end(next, end, end_next, tl, ?seq1, end_seq);
+	{
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		open tcp_packet_partial(start, ?pen, end, take(length(contents) -1, contents), seq);
+		//get next in context
+		open tcp_packet_single(start, seq);
+		tcp_packet_t *next = start->next;
+		close tcp_packet_single(start, seq);
+		sorted_tail(contents);
+		length_pos(contents);
+		append_drop_take(contents, length(contents) - 1);
+		if(start == pen) {
+			assert(next == end);
+			assert(contents == cons(seq, cons(end_seq, nil)));
+			close tcp_packet_partial_end(next, end, end_next, cons(end_seq, nil), end_seq, end_seq);
+		}
+		else {
+			//get seq1 in context
+			open tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), ?seq1);
+			close tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), seq1); 
+			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+			
+		}
+		
 	}
 	
 
