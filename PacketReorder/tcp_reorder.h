@@ -401,9 +401,11 @@ typedef struct tcp_pkt {
 	//For using tcp_partial_end, we want to reason recursively, so the following lemma is helpful
 	lemma void tcp_partial_packet_end_ind(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
 	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& start != end;
-	ensures tcp_packet_single(start, seq) &*& start->next |-> ?next &*& contents == cons(seq, ?tl) &*& tcp_packet_partial_end(next, end, end_next, tl, ?seq1, end_seq);
+	ensures tcp_packet_single(start, seq) &*& start->next |-> ?next &*& contents == cons(seq, ?tl) &*& tcp_packet_partial_end(next, end, end_next, tl, ?seq1, end_seq) 
+			&*& sorted(contents) == true;
 	{
 		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		assert(sorted(contents) == true);
 		open tcp_packet_partial(start, ?pen, end, take(length(contents) -1, contents), seq);
 		//get next in context
 		open tcp_packet_single(start, seq);
@@ -563,6 +565,32 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 @*/
 
 /*@
+
+	// Now, we need to prove bounds on the contents list. We do this in 2 steps:
+	
+	//First, we show that seq and end_seq are in the contents list
+	lemma void partial_end_contents_mem(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& mem(seq, contents) == true &*& mem(end_seq, contents) == true;
+	{
+		if(start == end) {
+			open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			assert(mem(seq, contents) == true);
+			assert(seq == end_seq);
+			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		}
+		else {
+			tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
+			assert(mem(seq, contents) == true);
+			//get next and seq1 in context
+			open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
+			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+			
+			partial_end_contents_mem(next, end, end_next, tail(contents), seq1, end_seq);
+			assert(mem(end_seq, contents) == true);
+			tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
+		}
+	}
 	
 	
 	//Now, we need to know that all values in the contents list are upper bounded by end->seq. This requires 2 parts
