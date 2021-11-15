@@ -270,7 +270,7 @@ typedef struct tcp_pkt {
 	predicate tcp_packet_partial_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq) =
 	tcp_packet_single(end, end_seq) &*& end != 0 &*& end->next |-> end_next &*& sorted(contents) == true &*&
 	(start == end ? contents == cons(end_seq, nil) && seq == end_seq
-	: tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq) &*& drop(length(contents) - 1, contents) == cons(end_seq, nil)); 
+	: contents != nil &*& tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq) &*& drop(length(contents) - 1, contents) == cons(end_seq, nil)); 
 	
 	//We prove equivalence in two lemmas. These are quite annoying to prove:
 	lemma void partial_start_implies_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq)
@@ -330,6 +330,57 @@ typedef struct tcp_pkt {
 					close tcp_packet_partial(start, pen, end, take((length(contents) - 1), contents), seq);
 					close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
 				}
+			}
+		}
+	}
+	
+	//TODO: move
+	lemma void length_pos<t>(list<t> l)
+	requires l != nil;
+	ensures 1 <= length(l);
+	{
+		switch(l) {
+			case nil:
+			case cons(h, tl): 
+				switch(tl) {
+					case nil:
+					case cons(h1, t1): length_pos(tl);
+				}
+		}
+	}
+	
+	
+	lemma void partial_end_implies_start(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	ensures tcp_packet_partial(start, end, end_next, contents, seq);
+	{
+		if(start==end) {
+			open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			close tcp_packet_partial(start, end, end_next, contents, seq);
+		}
+		else {
+			open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			//get pen in context
+			open tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq);
+			tcp_packet_t *next = start->next;
+			if(start == pen) {
+				close tcp_packet_partial(next, end, end_next, cons(end_seq, nil), end_seq);
+				length_pos(contents);
+				append_drop_take(contents, length(contents) - 1);
+				assert(contents == cons(seq, cons(end_seq, nil)));
+				close tcp_packet_partial(start, end, end_next, contents, seq);
+			}
+			else {
+				assert(contents == cons(?seq2, tail(contents)));
+				assert(contents == append(cons(seq2, nil), tail(contents)));
+				sorted_app2(cons(seq2, nil), tail(contents));
+				//need seq1 in context
+				open tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), ?seq1);
+				close tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), seq1);
+				
+				close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+				partial_end_implies_start(next, end, end_next, tail(contents), seq1, end_seq);
+				close tcp_packet_partial(start, end, end_next, contents, seq);
 			}
 		}
 	}
