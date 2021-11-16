@@ -140,6 +140,10 @@ predicate tcp_packet_partial_end(tcp_packet_t *start, tcp_packet_t *end, tcp_pac
 tcp_packet_single(end, end_seq) &*& end != 0 &*& end->next |-> end_next &*& sorted(contents) == true &*&
 (start == end ? contents == cons(end_seq, nil) && seq == end_seq
 : contents != nil &*& tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq) &*& drop(length(contents) - 1, contents) == cons(end_seq, nil)); 
+
+//Due to a Verifast limitation (related to when we can use patterns), we want a more general predicate that allows us to describe an empty list:
+predicate tcp_packet_partial_end_gen(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq) =
+	start != 0 && end != 0 ? tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) : contents == nil; 
 	
 	
 //The overall predicate just says that additionally, the last packet points to NULL

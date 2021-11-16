@@ -258,46 +258,51 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	//It will also be helpful to know that seq != end_seq
 	//@partial_end_contents_mem(start, end, 0, l, start_seq, end_seq);
 	
+	//@close tcp_packet_partial_end_gen(start, prev, start, nil, start_seq, 0);
+	//@close tcp_packet_partial_end_gen(start, end, 0, l, start_seq, end_seq);
+	
 	for (it = ord->list; it != NULL; it = it->next)
 	/*@
 	 invariant tcp_packet_single(tpkt, seq) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l)) &*& ord->list |-> start &*&
-	 prev == 0 && it != 0 ? tcp_packet_partial_end(start, end, 0, l, start_seq, end_seq) &*& start == it 
-	 : it == 0 ? prev == end &*& cmp(end_seq, seq) < 0 &*& tcp_packet_partial_end(start, end, 0, l, seq, end_seq)
-	 : tcp_packet_partial_end(start, prev, it, ?l1, start_seq, ?prev_seq) &*& tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq) &*& append(l1, l2) == l &*&
-		 cmp(prev_seq, seq) < 0; @*/
+	 	tcp_packet_partial_end_gen(start, prev, it, ?l1, start_seq, ?prev_seq) &*& tcp_packet_partial_end_gen(it, end, 0, ?l2, ?it_seq, end_seq) &*&
+	 	append(l1, l2) == l &*& 
+		prev == 0 && it != 0 ? start == it && it_seq == start_seq
+		 : it == 0 ? prev == end && prev_seq == end_seq && cmp(end_seq, seq) < 0
+		 : cmp(prev_seq, seq) < 0; @*/
 	// This invariant is quite complicated. The first case is the start, the second is the (trivial) end, and the third case is interesting. It says we can split up l into
 	// l1 and l2, where seq is larger than the largest value in l1 (so we should insert in l2)
 	      {
+	      //Get l1 and l2 in context (this is why we need the gen version of the partial_end predicate
+	      //@ open tcp_packet_partial_end_gen(start, prev, it, l1, start_seq, prev_seq);
+	      //@ open tcp_packet_partial_end_gen(it, end, 0, l2, it_seq, end_seq);
 	      /*@ 
 	      	// open things for each case so we can access it->seq
-	      	if(prev == NULL) {
+	      	if(prev == 0 && it != 0) {
 	      		if(it == end) {
-	      			open tcp_packet_partial_end(start, end, 0, l, start_seq, end_seq);
-	      			open tcp_packet_single(it, start_seq);
+	      			open tcp_packet_partial_end(it, end, 0, l2, start_seq, end_seq);
 	      		}
 	      		else {
-	      			tcp_partial_packet_end_ind(it, end, 0, l, start_seq, end_seq);
-	      			open tcp_packet_single(it, start_seq);
+	      			tcp_partial_packet_end_ind(it, end, 0, l2, start_seq, end_seq);
 	      		}
+	      		open tcp_packet_single(it, start_seq);
 	      	}
+	      	else if(it == 0) assert(false); //trivial
 	      	else {
-	      		if(it == end) {
-	      			open tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq);
-	      			open tcp_packet_single(it, it_seq);
-	      			open tcp_packet_partial_end(start, prev, it, ?l1, start_seq, ?prev_seq);
-	      			open tcp_packet_single(prev, prev_seq);
-	      		}
-	      		else {
+	      		open tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
+	      		if(it != end) {
 	      			//get lt and it_seq in contents
-	      			open tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq);
+	      			//open tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq);
+	      			//close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
 	      			close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
 	      			tcp_partial_packet_end_ind(it, end, 0, l2, it_seq, end_seq);
-	      			open tcp_packet_single(it, it_seq);
-	      			open tcp_packet_partial_end(start, prev, it, ?l1, start_seq, ?prev_seq);
-	      			open tcp_packet_single(prev, prev_seq);
 	      		}
+	      		open tcp_packet_single(it, it_seq);
+	      		// In this case, we also need to be able to access prev->next
+	      		open tcp_packet_partial_end(start, prev, it, l1, start_seq, prev_seq);
+	      		open tcp_packet_single(prev, prev_seq);
 	      	}
 	      	@*/
+	      	// this was the goal - now we can access it->seq
 	      	//@ open tcp_packet_single(tpkt, seq);
 	      	//@ open tcp_packet_list_wf(ord, end, length(l));
 	      	
@@ -312,6 +317,22 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 			//@ close tcp_packet_single(tpkt, seq);
 			/*@
 				if(prev) {
+					// now we have start --> prev -> tkpt -> it --> end
+					// First, we deal with start ---> tkpt
+					close tcp_packet_single(it, it_seq);
+					close tcp_packet_single(prev, prev_seq);
+					
+					close tcp_packet_partial_end(start, prev, tpkt, l1, start_seq, prev_seq);
+					//in either case, we need to close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq)
+					if(it == end) {
+						close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
+					}
+					else {
+						//get next and next_seq for fold lemma
+						open tcp_packet_partial_end(?next, end, 0, tail(l2), ?next_seq, end_seq);
+						close tcp_packet_partial_end(next, end, 0, tail(l2), next_seq, end_seq);
+						tcp_partial_packet_end_fold(it, next, end, 0, l2, it_seq, next_seq, end_seq);
+					}
 					assume(false);
 				}
 				else {
