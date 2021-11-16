@@ -411,7 +411,29 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		//prove that the heap invariants are preserved - TODO
 		/*@
 			if(old_prev) {
-				assume(false);
+				//First part is start --> prev -> it, and it becomes the new prev
+				close tcp_packet_single(old_prev, prev_seq);
+				close tcp_packet_partial_end(start, old_prev, new_prev, l1, start_seq, prev_seq);
+				close tcp_packet_single(old_it, it_seq);
+				close tcp_packet_partial_end(new_prev, new_prev, new_it, cons(it_seq, nil), it_seq, it_seq);
+				//prove that l1 ++ [it_seq] is sorted - we know this because l = l1 ++ (it_seq :: l2) = (l1 ++ [it_seq]) ++ l2
+				append_assoc(l1, cons(it_seq, nil), tail(l2));
+				sorted_app1(append(l1, cons(it_seq, nil)), tail(l2));
+				partial_app(start, old_prev, new_prev, new_prev, new_it, l1, cons(it_seq, nil), start_seq, it_seq, prev_seq, it_seq); 
+				close tcp_packet_partial_end_gen(start, new_prev, new_it, append(l1, cons(it_seq, nil)), start_seq, it_seq);
+				if(old_it == end) {
+					//We have start --> prev -> it = end, which becomes start --> prev' = it = = end, it' = null
+					assert(new_it == 0);
+					close tcp_packet_partial_end_gen(new_it, end, 0, nil, it_seq, end_seq);
+				}
+				else {
+					//We have start --> prev -> it -> next --> end, which becomes start --> prev' = it -> it' = next --> end
+					//need seq1
+					open tcp_packet_partial_end(new_it, end, 0, tail(l2), ?seq1, end_seq);
+					close tcp_packet_partial_end(new_it, end, 0, tail(l2), seq1, end_seq);
+					partial_end_start_nonzero(new_it, end, 0, tail(l2), seq1, end_seq); //new_it != 0
+					close tcp_packet_partial_end_gen(new_it, end, 0, tail(l2), seq1, end_seq);
+				}
 			}
 			else {
 				if(old_it == end) {
