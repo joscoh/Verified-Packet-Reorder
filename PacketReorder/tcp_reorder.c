@@ -52,6 +52,8 @@
 //#include <libtrace.h>
 #include <stdint.h>
 
+
+//@ #include "sort.gh"
 #include "tcp_reorder.h"
 
 /* Compares two sequence numbers, dealing appropriate with wrapping.
