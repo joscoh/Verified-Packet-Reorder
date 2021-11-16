@@ -191,14 +191,20 @@ typedef struct tcp_reorder {
 //TODO: maybe change params but I think ok (maybe can say something about create/destroy to deal with that, maybe not)
 /*@
 
-  predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end) =
-      malloc_block_tcp_reorder(reorder) &*&
-      //fields initialized
-      reorder->expected_seq |-> _ &*& reorder->list_len |-> ?length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
-      reorder->list |-> start &*& reorder->list_end |-> end &*& length(contents) == length &*&
-      // either empty or well-formed packet
-      start == 0 ? end == 0 && contents == nil:
-       	tcp_packet_full(start, end, contents, _);
+	//All of the non-contents/start parts of a tcp reorderer, which we bundle together because most are not changing. This is mostly helpful for the loop invariant in insert,
+	//since we need ord->list but the others are not accessed.
+	predicate tcp_packet_list_wf(tcp_packet_list_t *reorder, tcp_packet_t *end, int length) =
+		malloc_block_tcp_reorder(reorder) &*&
+      		//fields initialized
+      		reorder->expected_seq |-> _ &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
+      		reorder->list_end |-> end;
+		
+
+ 	predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end) =
+		tcp_packet_list_wf(reorder, end, length(contents)) &*& reorder->list |-> start &*&
+		// either empty or well-formed packet
+		start == 0 ? end == 0 && contents == nil:
+		tcp_packet_full(start, end, contents, _);
 @*/
       
 

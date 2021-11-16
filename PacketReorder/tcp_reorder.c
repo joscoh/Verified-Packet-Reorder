@@ -108,6 +108,7 @@ tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet
 	ord->read_packet = cb;
 	ord->destroy_packet = destroy_cb;
 	ord->list_len = 0;
+	//@close tcp_packet_list_wf(ord, 0, 0);
 	//@close tcp_packet_list_tp(ord, nil, 0, 0);
 
 	return ord;
@@ -123,6 +124,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 //@ ensures true;
 {
 	//@open tcp_packet_list_tp(ord, seqs, start, end);
+	//@open tcp_packet_list_wf(ord, end, _);
 	tcp_packet_t *head = ord->list;
 	tcp_packet_t *tmp;
 	
@@ -190,6 +192,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	//@close tcp_packet_single(tpkt, seq);
 	
 	//@open tcp_packet_list_tp(ord, l, start, end);
+	//@open tcp_packet_list_wf(ord, end, length(l));
 
 	/* If we're the first thing to go into the list, this is pretty easy */
 	if (ord->list == NULL) {
@@ -202,6 +205,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		///@close tcp_packet_single(tpkt, _);
 		//@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _);
 		//@close tcp_packet_full(tpkt, tpkt, insert(seq, nil), _);
+		//@close tcp_packet_list_wf(ord, tpkt, 1); 
 		//@close tcp_packet_list_tp(ord, insert(seq, nil), tpkt, tpkt);
 		return 1;
 	}
@@ -237,14 +241,66 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		//@partial_app(start, end, tpkt, tpkt, 0, l, cons(seq, nil), start_seq, seq, end_seq, seq);
 		//@partial_end_implies_start(start, tpkt, 0, insert(seq, l), start_seq, seq);
 		//@close tcp_packet_full(start, tpkt, insert(seq, l), _);
+		//@close tcp_packet_list_wf(ord, tpkt, 1 + length(l));
 		//@close tcp_packet_list_tp(ord, insert(seq, l), start, tpkt);		
 		return 1;
 	}
 	
-	//@ assume(false);
-
+	//@ assert(cmp(seq, end_seq) < 0); //TODO: do we need this as invariant?
+	
 	/* Otherwise, find the appropriate spot for the packet in the list */
-	for (it = ord->list; it != NULL; it = it->next) {
+	
+	//Establish invariants
+	//@close tcp_packet_single(end, end_seq);
+	//@close tcp_packet_partial_end(start, end, 0, l, start_seq, end_seq);
+	//@close tcp_packet_list_wf(ord, end, length(l));
+	
+	//It will also be helpful to know that seq != end_seq
+	//@partial_end_contents_mem(start, end, 0, l, start_seq, end_seq);
+	
+	for (it = ord->list; it != NULL; it = it->next)
+	/*@
+	 invariant tcp_packet_single(tpkt, seq) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l)) &*& ord->list |-> start &*&
+	 prev == 0 && it != 0 ? tcp_packet_partial_end(start, end, 0, l, start_seq, end_seq) &*& start == it 
+	 : it == 0 ? prev == end &*& cmp(end_seq, seq) < 0 &*& tcp_packet_partial_end(start, end, 0, l, seq, end_seq)
+	 : tcp_packet_partial_end(start, prev, it, ?l1, start_seq, ?prev_seq) &*& tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq) &*& append(l1, l2) == l &*&
+		 cmp(prev_seq, seq) < 0; @*/
+	// This invariant is quite complicated. The first case is the start, the second is the (trivial) end, and the third case is interesting. It says we can split up l into
+	// l1 and l2, where seq is larger than the largest value in l1 (so we should insert in l2)
+	      {
+	      /*@ 
+	      	// open things for each case so we can access it->seq
+	      	if(prev == NULL) {
+	      		if(it == end) {
+	      			open tcp_packet_partial_end(start, end, 0, l, start_seq, end_seq);
+	      			open tcp_packet_single(it, start_seq);
+	      		}
+	      		else {
+	      			tcp_partial_packet_end_ind(it, end, 0, l, start_seq, end_seq);
+	      			open tcp_packet_single(it, start_seq);
+	      		}
+	      	}
+	      	else {
+	      		if(it == end) {
+	      			open tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq);
+	      			open tcp_packet_single(it, it_seq);
+	      			open tcp_packet_partial_end(start, prev, it, ?l1, start_seq, ?prev_seq);
+	      			open tcp_packet_single(prev, prev_seq);
+	      		}
+	      		else {
+	      			//get lt and it_seq in contents
+	      			open tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq);
+	      			close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
+	      			tcp_partial_packet_end_ind(it, end, 0, l2, it_seq, end_seq);
+	      			open tcp_packet_single(it, it_seq);
+	      			open tcp_packet_partial_end(start, prev, it, ?l1, start_seq, ?prev_seq);
+	      			open tcp_packet_single(prev, prev_seq);
+	      		}
+	      	}
+	      	@*/
+	      	//@ open tcp_packet_single(tpkt, seq);
+	      	//@ open tcp_packet_list_wf(ord, end, length(l));
+	      	
 		if (seq_cmp(it->seq, seq) > 0) {
 			tpkt->next = it;
 			if (prev)
@@ -252,10 +308,54 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 			else
 				ord->list = tpkt;
 			ord->list_len += 1;
+			// Establish postconditions here
+			//@ close tcp_packet_single(tpkt, seq);
+			/*@
+				if(prev) {
+					assume(false);
+				}
+				else {
+					if(it == end) {
+						close tcp_packet_single(it, end_seq);
+						close tcp_packet_partial_end(it, end, 0, l, end_seq, end_seq);
+						assert(insert(seq, l) == cons(seq, l));
+						tcp_partial_packet_end_fold(tpkt, it, end, 0, insert(seq, l), seq, end_seq, end_seq);
+						partial_end_implies_start(tpkt, end, 0, insert(seq, l), seq, end_seq);
+						close tcp_packet_full(tpkt, end, insert(seq, l), seq);
+						//TODO: need result about length of insert
+						close tcp_packet_list_wf(ord, end, length(insert(seq, l)));
+						close tcp_packet_list_tp(ord, insert(seq, l), tpkt, end);
+						 
+					}
+					else {
+						assume(false);
+					}
+				}
+			@*/	
+		
 			return 1;
 		}
 		prev = it;
+		
+		//Preservation of loop invariant
+		//@close tcp_packet_single(tpkt, seq);
+		//@close tcp_packet_list_wf(ord, end, length(l));
+		//prove cmp(end, seq, seq) < 0
+		/*@
+			if(cmp(end_seq, seq) == 0) { 
+				cmp_inj(end_seq, seq);
+			}
+			else {
+				//assert(cmp(end_seq, seq) < 0);
+			} 
+		@*/
+		//prove that the heap invariants are preserved - TODO
+		//@assume(false);
+				
 	}
+	//contradiction here - (hence the assert false statement) because we know seq cannot be larger than everything
+	//@ cmp_antisym2(end_seq, seq);
+		
 
 	assert(it != NULL);
 	
