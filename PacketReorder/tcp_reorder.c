@@ -261,7 +261,11 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	//@close tcp_packet_partial_end_gen(start, prev, start, nil, start_seq, 0);
 	//@close tcp_packet_partial_end_gen(start, end, 0, l, start_seq, end_seq);
 	
-	for (it = ord->list; it != NULL; it = it->next)
+	//JOSH - changed from for loop to while loop - this is much easier invariant-wise (because we don't need to have it->next accessible when the loop continues which is
+	//a huge pain.
+	it = ord->list;
+	while(it!= NULL)
+	//for (it = ord->list; it != NULL; it = it->next)
 	/*@
 	 invariant tcp_packet_single(tpkt, seq) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l)) &*& ord->list |-> start &*&
 	 	tcp_packet_partial_end_gen(start, prev, it, ?l1, start_seq, ?prev_seq) &*& tcp_packet_partial_end_gen(it, end, 0, ?l2, ?it_seq, end_seq) &*&
@@ -379,21 +383,50 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		
 			return 1;
 		}
+		//@tcp_packet_t *old_prev = prev;
+		//@tcp_packet_t *new_prev = it;
+		//@tcp_packet_t *new_it = it->next;
 		prev = it;
-		
+		it = it->next;
 		//Preservation of loop invariant
 		//@close tcp_packet_single(tpkt, seq);
 		//@close tcp_packet_list_wf(ord, end, length(l));
-		//prove cmp(end, seq, seq) < 0
+		//prove cmp(end_seq, seq) < 0
 		/*@
 			if(cmp(end_seq, seq) == 0) { 
 				cmp_inj(end_seq, seq);
 			}
 			else {} 
 		@*/
+		//prove cmp(it_seq, seq) < 0
+		/*@
+			if(cmp(it_seq, seq) == 0) {
+				cmp_inj(it_seq, seq);
+			}
+			else {
+				assert(cmp(it_seq, seq) < 0);
+			}
+		@*/
 		//prove that the heap invariants are preserved - TODO
-		//@assume(false);
-				
+		/*@
+			if(old_prev) {
+				assume(false);
+			}
+			else {
+				if(it == end) {
+					close tcp_packet_single(new_prev, it_seq);
+					close tcp_packet_partial_end(new_prev, new_prev, new_it, cons(it_seq, nil), it_seq, it_seq);
+					close tcp_packet_partial_end_gen(new_prev, new_prev, new_it, cons(it_seq, nil), it_seq, it_seq);
+					//get next and seq1 in context
+					open tcp_packet_partial_end(?next, end, 0, tail(l), ?seq1, end_seq);
+					close tcp_packet_partial_end(next, end, 0, tail(l), seq1, end_seq);
+					close tcp_packet_partial_end_gen(next, end, 0, tail(l), seq1, end_seq);
+				}
+				else {
+					assume(false);
+				}
+			}
+		@*/	
 	}
 	//contradiction here - (hence the assert false statement) because we know seq cannot be larger than everything
 	//@ cmp_antisym2(end_seq, seq);
