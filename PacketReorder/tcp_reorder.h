@@ -134,7 +134,7 @@ typedef struct tcp_pkt {
 	requires inrange(a) == true && inrange(b) == true && cmp(a,b) < 0;
 	ensures cmp(b,a) > 0; 
 	
-	lemma void cmp_le_trans(int a, int b, int c);
+	lemma void cmp_ge_trans(int a, int b, int c);
 	requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) >= 0 && cmp(b, c) >= 0;
 	ensures cmp(a, c) >= 0; 
 
@@ -253,8 +253,25 @@ typedef struct tcp_pkt {
     
     //Lemmas about sorting and bounds:
     
-    
-    
+    //If have a list upper bounded by x, and we insert y > x, then y is added to the end of the list
+    lemma void insert_end(list<int> l, int bound, int y)
+    requires ub(bound, l) && inrange(bound) && inrange(y) && forall(l, inrange) && cmp(y, bound) > 0;
+    ensures insert(y, l) == append(l, cons(y, nil));
+    {
+    	switch(l) {
+    		case nil:
+    		case cons(h, t):
+    			forall_mem(h, l, inrange);
+    			cmp_ge_trans(y, bound, h);
+    			if(cmp(y, h) == 0) {
+    				cmp_inj(y, h);
+    			}
+    			else {
+    				cmp_antisym1(y, h);
+    			}
+    			insert_end(t, bound, y);
+    	}
+    }
 
 @*/
 	
@@ -267,6 +284,7 @@ typedef struct tcp_pkt {
 
 // This is the natural way to express a linked list with start and end pointers. It is useful for getting information about the start node, but not the end node.
 /*@ 
+
 	//These are the non-list parts of the packet
 	predicate tcp_packet_single(tcp_packet_t *start, int seq) =
 	// start is properly intialized
@@ -531,7 +549,6 @@ typedef struct tcp_pkt {
 				open tcp_packet_partial(next, p1, p2, tail(l1), seq12);
 			}
 			else {
-				//assert(tail(append(l1, l2)) == append(tail(l1), l2));
 				sorted_tail(append(l1, l2));
 				partial_app(next, p1, p2, end, end_next, tail(l1), l2, seq12, seq2, end_seq1, end_seq2); 
 				//combine result back into full predicate
@@ -540,15 +557,12 @@ typedef struct tcp_pkt {
 		}
 	}
 	
-@*/
 //The overall predicate just says that additionally, the last packet points to NULL
-/*@
+
 predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, int seq) =
 	end != 0 &*& tcp_packet_partial(start, end, 0, contents, seq);
 
-@*/
 
-/*@
 
 	// Now, we need to prove bounds on the contents list. We do this in 3 steps:
 	
@@ -611,10 +625,11 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 		}
 	}
 	
-	//Part 2: We need to know that everything in contents in inrange
-	lemma void partial_end_contents_inrange(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq, int x)
-	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& mem(x, contents) == true;
-	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& inrange(x) == true;
+	//Part 2: We need to know that everything in contents in inrange. We do this in two parts (the second part is for convenience):
+	
+	lemma void partial_end_contents_forall_inrange(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& forall(contents, inrange) == true;
 	{
 		if(start == end) {
 			open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
@@ -624,20 +639,24 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 		}
 		else {
 			tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
+			open tcp_packet_single(start, seq);
+			close tcp_packet_single(start, seq);
 			
 			//get next and seq1
 			open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
 			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
-			
-			if(x == seq) {
-				open tcp_packet_single(start, seq);
-				close tcp_packet_single(start, seq);
-			}
-			else {
-				partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, end_seq, x);
-			}
+			partial_end_contents_forall_inrange(next, end, end_next, tail(contents), seq1, end_seq);
 			tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
 		}
+	}
+	
+	
+	lemma void partial_end_contents_inrange(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq, int x)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& mem(x, contents) == true;
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& inrange(x) == true;
+	{
+		partial_end_contents_forall_inrange(start, end, end_next, contents, seq, end_seq);
+		forall_mem(x, contents, inrange);
 	}
 	
 	//Part 3: Now, we can prove the upper bound:
@@ -668,11 +687,10 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 			//need to know seq is in range
 			open tcp_packet_single(start, seq);
 			close tcp_packet_single(start, seq);
-			cmp_le_trans(end_seq, seq1, seq);
+			cmp_ge_trans(end_seq, seq1, seq);
 			tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
 		}
 	}
-
 @*/
 
 
@@ -715,7 +733,9 @@ typedef struct tcp_reorder {
 } tcp_packet_list_t;
 
 //TODO: maybe change params but I think ok (maybe can say something about create/destroy to deal with that, maybe not)
-/*@ predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end) =
+/*@
+
+  predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end) =
       malloc_block_tcp_reorder(reorder) &*&
       //fields initialized
       reorder->expected_seq |-> _ &*& reorder->list_len |-> ?length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
