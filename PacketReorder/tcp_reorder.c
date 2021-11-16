@@ -315,15 +315,12 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 					assume(false);
 				}
 				else {
+					// In each case, we need to show that we have tcp_partial_end(tpkt, end, 0, insert(seq, l), seq, _, end_seq);
 					if(it == end) {
 						close tcp_packet_single(it, end_seq);
 						close tcp_packet_partial_end(it, end, 0, l, end_seq, end_seq);
 						assert(insert(seq, l) == cons(seq, l));
 						tcp_partial_packet_end_fold(tpkt, it, end, 0, insert(seq, l), seq, end_seq, end_seq);
-						partial_end_implies_start(tpkt, end, 0, insert(seq, l), seq, end_seq);
-						close tcp_packet_full(tpkt, end, insert(seq, l), seq);
-						close tcp_packet_list_wf(ord, end, length(insert(seq, l)));
-						close tcp_packet_list_tp(ord, insert(seq, l), tpkt, end);
 					}
 					else {
 						close tcp_packet_single(it, start_seq);
@@ -332,11 +329,12 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 						close tcp_packet_partial_end(next, end, 0, tail(l), seq1, end_seq);
 						tcp_partial_packet_end_fold(it, next, end, 0, l, start_seq, seq1, end_seq);
 						tcp_partial_packet_end_fold(tpkt, it, end, 0, insert(seq, l), seq, start_seq, end_seq);
-						partial_end_implies_start(tpkt, end, 0, insert(seq, l), seq, end_seq);
-						close tcp_packet_full(tpkt, end, insert(seq, l), seq);
-						close tcp_packet_list_wf(ord, end, length(insert(seq, l)));
-						close tcp_packet_list_tp(ord, insert(seq, l), tpkt, end);
 					}
+					// In both cases, close all remaining predicates
+					partial_end_implies_start(tpkt, end, 0, insert(seq, l), seq, end_seq);
+					close tcp_packet_full(tpkt, end, insert(seq, l), seq);
+					close tcp_packet_list_wf(ord, end, length(insert(seq, l)));
+					close tcp_packet_list_tp(ord, insert(seq, l), tpkt, end);
 				}
 			@*/	
 		
