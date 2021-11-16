@@ -118,6 +118,10 @@ typedef struct tcp_pkt {
     	return (0 <= x) && (x <= INT32_MAX);
     }
     
+    lemma void cmp_same(int a);
+    requires true;
+    ensures cmp(a, a) == 0;
+    
 	lemma void cmp_inj(int a, int b);
 	requires (0 <= a) && (a <= UINT32_MAX) && (0 <= b) && (b <= UINT32_MAX) && cmp(a,b) == 0;
 	ensures a == b;
@@ -129,6 +133,10 @@ typedef struct tcp_pkt {
 	lemma void cmp_antisym2(int a, int b);
 	requires inrange(a) == true && inrange(b) == true && cmp(a,b) < 0;
 	ensures cmp(b,a) > 0; 
+	
+	lemma void cmp_le_trans(int a, int b, int c);
+	requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) >= 0 && cmp(b, c) >= 0;
+	ensures cmp(a, c) >= 0; 
 
 @*/
 
@@ -161,7 +169,7 @@ typedef struct tcp_pkt {
     ensures sorted(insert(x, l)) == true;
     {
     	switch(l) {
-    		case nil: assert(sorted(insert(x, l)) == true);
+    		case nil:
     		case cons(h, t): 
     			if(cmp(h, x) > 0) {}
     			else if(cmp(h, x) == 0) { 
@@ -293,7 +301,6 @@ typedef struct tcp_pkt {
 			open tcp_packet_partial(start, end, end_next, contents, seq);
 			open tcp_packet_single(start, seq);
 			int end_seq = end->seq;
-			assert(seq == end_seq);
 			close tcp_packet_single(end, end_seq);
 			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
 		}
@@ -309,36 +316,26 @@ typedef struct tcp_pkt {
 			open tcp_packet_partial_end(next, end, end_next, tl, seq1, ?end_seq);
 			if(next == end) {
 				
-				assert(contents == cons(seq, cons(end_seq, nil)));
 				//get that start != 0
 				open tcp_packet_single(start, seq);
-				assert(start != 0);
 				close tcp_packet_single(start, seq);
 				
-				//close tcp_packet_partial(next, next, end, 
 				close tcp_packet_partial(start, start, end, cons(seq, nil), seq);
 				close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
 			}
 			else {
 				//The inductive case
-				//lets go backwards for a bit
 				//to get pen in the context
 				assert(tcp_packet_partial(next, ?pen, end, take(length(tail(contents)) - 1, tail(contents)), seq1));
-				assert(sorted(append(take(length(contents) - 1, contents), drop(length(contents) -1, contents))) == true);
 				sorted_app1(take(length(contents) - 1, contents), drop(length(contents) -1, contents));
 				//want to show start != pen
 				if(start == pen) {
-					//in this case, we have start -> next -> pen = start, so we have a cycle
-					assert(start->next == next);
+					//in this case, we have start -> next -> pen = start, so we have a cycle, contradiction bc of separating conjuction
 					//we need to get pen->next to show it is end, so we apply IH again
 					partial_start_implies_end(next, pen, end, take((length(tail(contents)) - 1), tail(contents)), seq1);
 					open tcp_packet_partial_end(next, pen, end, take((length(tail(contents)) - 1), tail(contents)), seq1, ?end_seq1);
-					//assert(next->next == pen);
-					assert(start->next == end);
-					assert(end == next); //contradiction
 				}
 				else {
-					assert(start != pen);
 					close tcp_packet_partial(start, pen, end, take((length(contents) - 1), contents), seq);
 					close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
 				}
@@ -379,14 +376,11 @@ typedef struct tcp_pkt {
 				close tcp_packet_partial(next, end, end_next, cons(end_seq, nil), end_seq);
 				length_pos(contents);
 				append_drop_take(contents, length(contents) - 1);
-				assert(contents == cons(seq, cons(end_seq, nil)));
 				close tcp_packet_partial(start, end, end_next, contents, seq);
 			}
 			else {
 				sorted_tail(contents);
 				assert(contents == cons(?seq2, tail(contents)));
-				assert(contents == append(cons(seq2, nil), tail(contents)));
-				//sorted_app2(cons(seq2, nil), tail(contents));
 				//need seq1 in context
 				open tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), ?seq1);
 				close tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), seq1);
@@ -405,7 +399,6 @@ typedef struct tcp_pkt {
 			&*& sorted(contents) == true;
 	{
 		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-		assert(sorted(contents) == true);
 		open tcp_packet_partial(start, ?pen, end, take(length(contents) -1, contents), seq);
 		//get next in context
 		open tcp_packet_single(start, seq);
@@ -415,8 +408,6 @@ typedef struct tcp_pkt {
 		length_pos(contents);
 		append_drop_take(contents, length(contents) - 1);
 		if(start == pen) {
-			assert(next == end);
-			assert(contents == cons(seq, cons(end_seq, nil)));
 			close tcp_packet_partial_end(next, end, end_next, cons(end_seq, nil), end_seq, end_seq);
 		}
 		else {
@@ -436,7 +427,6 @@ typedef struct tcp_pkt {
 		if(start == end) {
 			//contradiction with 2 start->next blocks
 			open tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
-			assert(false);
 		}
 		else {
 			open tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
@@ -457,7 +447,6 @@ typedef struct tcp_pkt {
 				//prove that next != 0
 				open tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1);
 				open tcp_packet_single(next, seq1);
-				assert(next != 0);
 				close tcp_packet_single(next, seq1);
 				close tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1);
 				
@@ -466,14 +455,12 @@ typedef struct tcp_pkt {
 					//again, contradiction in separation logic
 					partial_start_implies_end(next, pen, end, take((length(tl) - 1), tl), seq1);
 					open tcp_packet_partial_end(next, pen, end, take((length(tl) - 1), tl), seq1, ?end_seq1);
-					assert(false);
 				}
 				else {
 					close tcp_packet_partial(start, pen, end, cons(seq, take(length(tl) - 1, tl)), seq);
 					close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
 				}
 			}
-			
 		}
 	}
 	
@@ -484,7 +471,6 @@ typedef struct tcp_pkt {
 	{
 		open tcp_packet_partial(start, end, end_next, contents, seq);
 		open tcp_packet_single(start, seq);
-		assert(start != 0);
 		close tcp_packet_single(start, seq);
 		close tcp_packet_partial(start, end, end_next, contents, seq);
 	}
@@ -521,7 +507,6 @@ typedef struct tcp_pkt {
 					//if it is, then start->next = p2 and pen->next = end, so p2 = end, contradiction
 					partial_start_implies_end(p2, pen, end, take(length(l2) - 1, l2), seq2);
 					open tcp_packet_partial_end(p2, pen, end, take(length(l2) - 1, l2), seq2, ?end_seq3);
-					assert(p2 == end);
 				}
 				else {
 					close tcp_packet_partial(start, pen, end, cons(seq1,take(length(l2) - 1, l2)), seq1); 
@@ -544,10 +529,9 @@ typedef struct tcp_pkt {
 				//easiest way is to use previous lemma (though it's not strictly needed)
 				partial_end_implies_start(next, p1, p2, tail(l1), seq12, end_seq1);
 				open tcp_packet_partial(next, p1, p2, tail(l1), seq12);
-				assert(false);
 			}
 			else {
-				assert(tail(append(l1, l2)) == append(tail(l1), l2));
+				//assert(tail(append(l1, l2)) == append(tail(l1), l2));
 				sorted_tail(append(l1, l2));
 				partial_app(next, p1, p2, end, end_next, tail(l1), l2, seq12, seq2, end_seq1, end_seq2); 
 				//combine result back into full predicate
@@ -566,7 +550,7 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 
 /*@
 
-	// Now, we need to prove bounds on the contents list. We do this in 2 steps:
+	// Now, we need to prove bounds on the contents list. We do this in 3 steps:
 	
 	//First, we show that seq and end_seq are in the contents list
 	lemma void partial_end_contents_mem(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
@@ -575,43 +559,119 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 	{
 		if(start == end) {
 			open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-			assert(mem(seq, contents) == true);
-			assert(seq == end_seq);
 			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
 		}
 		else {
 			tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
-			assert(mem(seq, contents) == true);
 			//get next and seq1 in context
 			open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
 			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
 			
 			partial_end_contents_mem(next, end, end_next, tail(contents), seq1, end_seq);
-			assert(mem(end_seq, contents) == true);
 			tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
 		}
 	}
 	
-	
-	//Now, we need to know that all values in the contents list are upper bounded by end->seq. This requires 2 parts
-	/*lemma void partial_end_contents_mem(tcp_packet_t *start, tcp_packet_t *end, int end_seq)
-	requires tcp_packet_partial(start, end, ?end_next, ?contents, ?seq) &*& end->seq == end_seq;
-	ensures tcp_packet_partial(start, end, end_next, contents, seq) &*& mem(end_seq, contents) == true;
-	{}*/
-	
-	/*lemma void partial_contents_ub(tcp_packet_t *start, tcp_packet_t *end)
-	requires tcp_packet_partial(start, end, ?end_next, ?contents, ?seq);
-	ensures tcp_packet_partial(start, end, end_next, contents, seq) &*& ub(end->seq, contents) == true;
+	//TODO: move
+	lemma void head_take<t>(list<t> l, int n)
+	requires 1 <= n && l != nil;
+	ensures head(take(n, l)) == head(l);
 	{
-		open tcp_packet_partial(start, end, end_next, contents, seq);
+		switch(l) {
+			case nil:
+			case cons(h, t):
+		}
+	}
+	
+	//One small lemma which helps:
+	lemma void partial_end_contents_head(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& head(contents) == seq &*& contents != nil;
+	{
+		
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
 		if(start == end) {}
 		else {
-			tcp_packet_t *next = start->next;
-			partial_contents_ub(next, end, end_next, _, _);
-			assert(cmp(end->seq, seq) 
+			open tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq);
+			length_pos(contents);
+			head_take(contents, length(contents) - 1);
+			close tcp_packet_partial(start, pen, end, take(length(contents) - 1, contents), seq);
 		}
-		assume(false);
-	}*/
+		close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	}
+	
+	//TODO: move
+	lemma void head_tail<t>(list<t> l)
+	requires l != nil;
+	ensures l == cons(head(l), tail(l));
+	{
+		switch(l) {
+			case nil:
+			case cons(h, t):
+		}
+	}
+	
+	//Part 2: We need to know that everything in contents in inrange
+	lemma void partial_end_contents_inrange(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq, int x)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& mem(x, contents) == true;
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& inrange(x) == true;
+	{
+		if(start == end) {
+			open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			open tcp_packet_single(end, end_seq);
+			close tcp_packet_single(end, end_seq);
+			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		}
+		else {
+			tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
+			
+			//get next and seq1
+			open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
+			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+			
+			if(x == seq) {
+				open tcp_packet_single(start, seq);
+				close tcp_packet_single(start, seq);
+			}
+			else {
+				partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, end_seq, x);
+			}
+			tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
+		}
+	}
+	
+	//Part 3: Now, we can prove the upper bound:
+	lemma void partial_end_contents_ub(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
+	requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& ub(end_seq, contents) == true;
+	{
+		if(start == end) {
+			open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			cmp_same(end_seq);
+			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		}
+		else {
+			tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
+			//get next and seq1 in context
+			open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
+			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+			//get IH
+			partial_end_contents_ub(next, end, end_next, tail(contents), seq1, end_seq);
+			
+			//need to prove that seq < seq1 - use sortedness after showing that head(contents) = seq1 
+			partial_end_contents_head(next, end, end_next, tail(contents), seq1, end_seq);
+			head_tail(tail(contents));
+			//need to know that end_seq and seq1 are in range, so we can use transitivity (we get that cmp(seq1, seq) > 0 by sortedness and the rest from the upper bound)
+			partial_end_contents_mem(next, end, end_next, tail(contents), seq1, end_seq);
+			partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, end_seq, end_seq);
+			partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, end_seq, seq1);
+			//need to know seq is in range
+			open tcp_packet_single(start, seq);
+			close tcp_packet_single(start, seq);
+			cmp_le_trans(end_seq, seq1, seq);
+			tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
+		}
+	}
 
 @*/
 
