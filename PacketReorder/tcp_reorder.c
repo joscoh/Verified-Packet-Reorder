@@ -333,7 +333,25 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 						close tcp_packet_partial_end(next, end, 0, tail(l2), next_seq, end_seq);
 						tcp_partial_packet_end_fold(it, next, end, 0, l2, it_seq, next_seq, end_seq);
 					}
-					assume(false);
+					//Now we deal with tkpt --> end
+					assert(insert(seq, l2) == cons(seq, l2));
+					close tcp_packet_partial_end(tpkt, tpkt, it, cons(seq, nil), seq, seq);
+					partial_end_contents_forall_inrange(it, end, 0, l2, it_seq, end_seq);
+					partial_app(tpkt, tpkt, it, end, 0, cons(seq, nil), l2, seq, it_seq, seq, end_seq);
+					//Now we can combine everything and get start ---> end
+					//prove sorted
+					partial_end_contents_forall_inrange(start, prev, tpkt, l1, start_seq, prev_seq);
+					partial_end_contents_ub(start, prev, tpkt, l1, start_seq, prev_seq);
+					insert_app(l1, l2, prev_seq, seq);
+					forall_append(l1, l2, inrange);
+					insert_sorted(seq, append(l1, l2));
+					
+					//Now we can combine everything and prove the postcondition
+					partial_app(start, prev, tpkt, end, 0, l1, insert(seq, l2), start_seq, seq, prev_seq, end_seq);
+					partial_end_implies_start(start, end, 0, insert(seq, l), start_seq, end_seq);
+					close tcp_packet_full(start, end, insert(seq, l), start_seq);
+					close tcp_packet_list_wf(ord, end, length(insert(seq, l)));
+					close tcp_packet_list_tp(ord, insert(seq, l), start, end);
 				}
 				else {
 					// In each case, we need to show that we have tcp_partial_end(tpkt, end, 0, insert(seq, l), seq, _, end_seq);

@@ -40,6 +40,25 @@ lemma void cmp_ge_trans(int a, int b, int c);
 requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) >= 0 && cmp(b, c) >= 0;
 ensures cmp(a, c) >= 0; 
 
+lemma void cmp_gt_trans(int a, int b, int c);
+requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) > 0 && cmp(b, c) > 0;
+ensures cmp(a, c) > 0; 
+
+//We can prove this one
+lemma void cmp_gt_ge_trans(int a, int b, int c)
+requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) > 0 && cmp(b, c) >= 0;
+ensures cmp(a, c) > 0; 
+{
+	if(cmp(b, c) == 0) {
+		cmp_inj(b, c);
+	} 
+	else {
+		cmp_gt_trans(a, b, c);
+	}
+	
+	
+}
+
 /* Sorting */
 
 
@@ -176,6 +195,23 @@ ensures insert(y, l) == append(l, cons(y, nil));
 			}
 			insert_end(t, bound, y);
 	}
+}
+
+//If l1 is upper bounded by x, and we insert y>x into l1 ++ l2, then we can just ignore l1
+
+lemma void insert_app(list<int> l1, list<int> l2, int bound, int y)
+requires ub(bound, l1) && inrange(bound) && inrange(y) && forall(l1, inrange) && cmp(bound, y) < 0;
+ensures insert(y, append(l1, l2)) == append(l1, insert(y, l2));
+{
+	switch(l1) {
+		case nil: 
+		case cons(h, t):
+			forall_mem(h, l1, inrange);
+			cmp_antisym2(bound, y);
+			cmp_gt_ge_trans(y, bound, h);
+			insert_app(t, l2, bound, y);
+			cmp_antisym1(y, h);
+	}	
 }
 
 /* Miscellaneous Results about Lists */
