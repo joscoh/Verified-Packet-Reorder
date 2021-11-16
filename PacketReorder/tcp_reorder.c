@@ -384,6 +384,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 			return 1;
 		}
 		//@tcp_packet_t *old_prev = prev;
+		//@tcp_packet_t *old_it = it;
 		//@tcp_packet_t *new_prev = it;
 		//@tcp_packet_t *new_it = it->next;
 		prev = it;
@@ -413,17 +414,21 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 				assume(false);
 			}
 			else {
-				if(it == end) {
+				if(old_it == end) {
+					close tcp_packet_single(new_prev, it_seq);
+					close tcp_packet_partial_end(new_prev, new_prev, new_it, cons(it_seq, nil), it_seq, it_seq);
+					close tcp_packet_partial_end_gen(new_prev, new_prev, new_it, cons(it_seq, nil), it_seq, it_seq);
+					close tcp_packet_partial_end_gen(new_it, end, 0, nil, 0, end_seq);
+				}
+				else {
 					close tcp_packet_single(new_prev, it_seq);
 					close tcp_packet_partial_end(new_prev, new_prev, new_it, cons(it_seq, nil), it_seq, it_seq);
 					close tcp_packet_partial_end_gen(new_prev, new_prev, new_it, cons(it_seq, nil), it_seq, it_seq);
 					//get next and seq1 in context
 					open tcp_packet_partial_end(?next, end, 0, tail(l), ?seq1, end_seq);
 					close tcp_packet_partial_end(next, end, 0, tail(l), seq1, end_seq);
+					partial_end_start_nonzero(next, end, 0, tail(l), seq1, end_seq); //need to know next!= 0
 					close tcp_packet_partial_end_gen(next, end, 0, tail(l), seq1, end_seq);
-				}
-				else {
-					assume(false);
 				}
 			}
 		@*/	

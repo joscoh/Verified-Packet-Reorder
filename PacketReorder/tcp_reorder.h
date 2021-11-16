@@ -621,6 +621,27 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
 	}
 }
+
+//One other helpful lemma: the head of partial_end is always nonzero
+lemma void partial_end_start_nonzero(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq)
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& start != 0;
+{
+	if(start == end) {
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		open tcp_packet_single(start, seq);
+		close tcp_packet_single(start, seq);
+		close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	}
+	else {
+		tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
+		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?next_seq, end_seq);
+		close tcp_packet_partial_end(next, end, end_next, tail(contents), next_seq, end_seq);
+		open tcp_packet_single(start, seq);
+		close tcp_packet_single(start, seq);
+		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, next_seq, end_seq);
+	}
+}
 @*/
 
 #endif
