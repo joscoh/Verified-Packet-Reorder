@@ -1,1 +1,0 @@
-All files from the VigNat (https://github.com/vignat/vignat) repository
