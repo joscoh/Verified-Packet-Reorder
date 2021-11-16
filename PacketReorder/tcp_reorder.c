@@ -185,6 +185,8 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	tpkt->data = packet;
 	tpkt->ts = ts;
 	
+	//@close tcp_packet_single(tpkt, seq);
+	
 	//@open tcp_packet_list_tp(ord, l, start, end);
 
 	/* If we're the first thing to go into the list, this is pretty easy */
@@ -195,7 +197,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		ord->list_end = tpkt;
 		ord->list_len += 1;
 		///@close tcp_packet_partial_aux(tpkt, tpkt, insert(seq, nil), _);
-		//@close tcp_packet_single(tpkt, _);
+		///@close tcp_packet_single(tpkt, _);
 		//@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _);
 		//@close tcp_packet_full(tpkt, tpkt, insert(seq, nil), _);
 		//@close tcp_packet_list_tp(ord, insert(seq, nil), tpkt, tpkt);
@@ -205,27 +207,35 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 
 	/* A lot of inserts should be at the end of the list */
 	it = ord->list_end;
-	//@ open tcp_packet_full(start, end, l, _);
+	//@open tcp_packet_full(start, end, l, ?start_seq);
 	///@full_end_nonnull(start, end);
 	assert(it != NULL);
 	
-	
-	//@ open tcp_packet_partial(start, end, 0, l, ?start_seq);
-	//@assume(false);
-	///@open tcp_packet_partial_aux(start, end, l, start_seq);
+	//For this part, we need to reason about the end rather than the beginning of the list
+	//First, we need to get the start seq
+	//@partial_start_implies_end(start, end, 0, l, start_seq);
+	//Get end_seq in context
+	//@open tcp_packet_partial_end(start, end, 0, l, start_seq, ?end_seq);
+	//@open tcp_packet_single(end, end_seq);
 	if (seq_cmp(seq, it->seq) >= 0) {
 		tpkt->next = NULL;
 		it->next = tpkt;
 
 		ord->list_end = tpkt;
 		ord->list_len += 1;
-		//TODO: HERE
-		//@assume(false);
-		//@ close tcp_packet_partial_aux(start, tpkt, insert(seq, nil), _);
-		///@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _, _);
-		///@close tcp_packet_full(tpkt, tpkt, insert(seq, nil), _);
-		///@close tcp_packet_list_tp(ord, insert(seq, nil), tpkt, tpkt);
 		
+		//@close tcp_packet_partial_end(tpkt, tpkt, 0, cons(seq, nil), seq, seq);
+		//@close tcp_packet_single(end, end_seq);
+		//@close tcp_packet_partial_end(start, end, tpkt, l, start_seq, end_seq);
+		//need to prove sorted
+		//@partial_end_contents_forall_inrange(start, end, tpkt, l, start_seq, end_seq); //everything in l is in range
+		//@partial_end_contents_ub(start, end, tpkt, l, start_seq, end_seq); // everything in l is <= end_seq
+		//@insert_end(l, end_seq, seq); // since seq is larger, insert seq l == l ++ [seq]
+		//@insert_sorted(seq, l); //and this is sorted
+		//@partial_app(start, end, tpkt, tpkt, 0, l, cons(seq, nil), start_seq, seq, end_seq, seq);
+		//@partial_end_implies_start(start, tpkt, 0, insert(seq, l), start_seq, seq);
+		//@close tcp_packet_full(start, tpkt, insert(seq, l), _);
+		//@close tcp_packet_list_tp(ord, insert(seq, l), start, tpkt);		
 		return 1;
 	}
 	

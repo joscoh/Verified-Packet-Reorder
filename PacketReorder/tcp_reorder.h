@@ -255,7 +255,7 @@ typedef struct tcp_pkt {
     
     //If have a list upper bounded by x, and we insert y > x, then y is added to the end of the list
     lemma void insert_end(list<int> l, int bound, int y)
-    requires ub(bound, l) && inrange(bound) && inrange(y) && forall(l, inrange) && cmp(y, bound) > 0;
+    requires ub(bound, l) && inrange(bound) && inrange(y) && forall(l, inrange) && cmp(y, bound) >= 0;
     ensures insert(y, l) == append(l, cons(y, nil));
     {
     	switch(l) {
