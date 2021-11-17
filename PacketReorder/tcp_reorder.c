@@ -196,13 +196,10 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 
 	/* If we're the first thing to go into the list, this is pretty easy */
 	if (ord->list == NULL) {
-		//@ assert(l==nil);
 		tpkt->next = NULL;
 		ord->list = tpkt;
 		ord->list_end = tpkt;
 		ord->list_len += 1;
-		///@close tcp_packet_partial_aux(tpkt, tpkt, insert(seq, nil), _);
-		///@close tcp_packet_single(tpkt, _);
 		//@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _);
 		//@close tcp_packet_full(tpkt, tpkt, insert(seq, nil), _);
 		//@close tcp_packet_list_wf(ord, tpkt, 1); 
@@ -214,7 +211,6 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	/* A lot of inserts should be at the end of the list */
 	it = ord->list_end;
 	//@open tcp_packet_full(start, end, l, ?start_seq);
-	///@full_end_nonnull(start, end);
 	assert(it != NULL);
 	
 	//For this part, we need to reason about the end rather than the beginning of the list
@@ -245,8 +241,6 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		//@close tcp_packet_list_tp(ord, insert(seq, l), start, tpkt);		
 		return 1;
 	}
-	
-	//@ assert(cmp(seq, end_seq) < 0); //TODO: do we need this as invariant?
 	
 	/* Otherwise, find the appropriate spot for the packet in the list */
 	
@@ -290,13 +284,10 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	      		}
 	      		open tcp_packet_single(it, start_seq);
 	      	}
-	      	else if(it == 0) assert(false); //trivial
+	      	else if(it == 0) {} //trivial
 	      	else {
 	      		open tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
 	      		if(it != end) {
-	      			//get lt and it_seq in contents
-	      			//open tcp_packet_partial_end(it, end, 0, ?l2, ?it_seq, end_seq);
-	      			//close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
 	      			close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq);
 	      			tcp_partial_packet_end_ind(it, end, 0, l2, it_seq, end_seq);
 	      		}
@@ -321,7 +312,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 			//@ close tcp_packet_single(tpkt, seq);
 			/*@
 				if(prev) {
-					// now we have start --> prev -> tkpt -> it --> end
+					// now we have start --> prev -> tkpt -> it --> end (the most interesting case)
 					// First, we deal with start ---> tkpt
 					close tcp_packet_single(it, it_seq);
 					close tcp_packet_single(prev, prev_seq);
@@ -338,7 +329,6 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 						tcp_partial_packet_end_fold(it, next, end, 0, l2, it_seq, next_seq, end_seq);
 					}
 					//Now we deal with tkpt --> end
-					assert(insert(seq, l2) == cons(seq, l2));
 					close tcp_packet_partial_end(tpkt, tpkt, it, cons(seq, nil), seq, seq);
 					partial_end_contents_forall_inrange(it, end, 0, l2, it_seq, end_seq);
 					partial_app(tpkt, tpkt, it, end, 0, cons(seq, nil), l2, seq, it_seq, seq, end_seq);
@@ -362,7 +352,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 					if(it == end) {
 						close tcp_packet_single(it, end_seq);
 						close tcp_packet_partial_end(it, end, 0, l, end_seq, end_seq);
-						assert(insert(seq, l) == cons(seq, l));
+						//assert(insert(seq, l) == cons(seq, l));
 						tcp_partial_packet_end_fold(tpkt, it, end, 0, insert(seq, l), seq, end_seq, end_seq);
 					}
 					else {
@@ -397,18 +387,14 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 			if(cmp(end_seq, seq) == 0) { 
 				cmp_inj(end_seq, seq);
 			}
-			else {} 
 		@*/
 		//prove cmp(it_seq, seq) < 0
 		/*@
 			if(cmp(it_seq, seq) == 0) {
 				cmp_inj(it_seq, seq);
 			}
-			else {
-				assert(cmp(it_seq, seq) < 0);
-			}
 		@*/
-		//prove that the heap invariants are preserved - TODO
+		//prove that the heap invariants are preserved
 		/*@
 			if(old_prev) {
 				//First part is start --> prev -> it, and it becomes the new prev
@@ -423,7 +409,6 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 				close tcp_packet_partial_end_gen(start, new_prev, new_it, append(l1, cons(it_seq, nil)), start_seq, it_seq);
 				if(old_it == end) {
 					//We have start --> prev -> it = end, which becomes start --> prev' = it = = end, it' = null
-					assert(new_it == 0);
 					close tcp_packet_partial_end_gen(new_it, end, 0, nil, it_seq, end_seq);
 				}
 				else {
