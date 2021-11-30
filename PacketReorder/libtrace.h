@@ -370,21 +370,30 @@ typedef struct libtrace_tcp
 
 //We need more information about the TCP structure, since we need to keep track of the header length, sequence number, and packet type
 
-inductive tcp_flags = syn | ack | fin | rst;
+inductive tcp_type = syn | ack | fin | rst;
+
+//Based on flags, what is tcp packet type?
+//We differentiate between syn-ack, fin-ack, and just ack packets, since ack packets with no data will not increase the sequence number.
+//Of the syn, fin, and rst flags, only 1 should be set to 1, though the ack flag may also be set in any of these.
+fixpoint option<tcp_type> tcp_flags_to_type (int f_ack, int f_rst, int f_syn, int f_fin) {
+	//SYN packet
+	return (f_syn == 1 && f_fin == 0 && f_rst == 0 ? some(syn) :
+	//FIN packet
+	(f_fin == 1 && f_syn == 0 && f_rst == 0 ? some(fin) :
+	//RST packet
+	(f_rst == 1 && f_syn == 0 && f_fin == 0 ? some(rst) :
+	//ACK packet
+	(f_ack == 1 && f_syn == 0 && f_fin == 0 && f_rst == 0 ? some(ack) : none))));
+}	
 
 //NOTE: We need to differentiate between syn-ack, fin-ack, and ack packets, since ack packets do not increase the sequence number, while the others do
-//Of the syn, fin, and rst flags, only 1 should be set to 1, though the ack flag may also be set in either of these
+
 
 //TODO: handle ntohl and htons via axiomatizing
 
-predicate libtrace_tcp_p (libtrace_tcp_t *tcp, int seq, int head_len, tcp_flags fl) =
+predicate libtrace_tcp_p (libtrace_tcp_t *tcp, int seq, int head_len, tcp_type ty) =
 	tcp != 0 &*& tcp->doff |-> ?len &*& 4 * len == head_len &*& tcp->syn |-> ?syn &*& tcp->ack |-> ?ack &*& tcp->fin |-> ?fin &*& tcp->rst |-> ?rst &*&
-	switch(fl) {
-	  case syn : return syn == 1 && fin == 0 && rst == 0;
-	  case fin : return fin == 1 && syn == 0 && rst == 0;
-	  case rst : return rst == 1 && syn == 0 && fin == 0;
-	  case ack : return ack == 1 && fin == 0 && syn == 0 && rst == 0;
-	};
+	tcp_flags_to_type(ack, rst, syn, fin) == some(ty);
 
 @*/
 
@@ -395,7 +404,7 @@ predicate libtrace_tcp_p (libtrace_tcp_t *tcp, int seq, int head_len, tcp_flags 
 
 predicate valid_ip_packet(libtrace_packet_t *packet, int head_len, int len);
 
-predicate valid_tcp_packet(libtrace_packet_t *packet, int seq, int head_len, tcp_flags fl);
+predicate valid_tcp_packet(libtrace_packet_t *packet, int seq, int head_len, tcp_type ty);
 
 //predicate valid_tcp_ip_packet(libtrace_packet_t *packet) = valid_ip_packet(packet) && valid_tcp_packet(packet);
 
@@ -434,13 +443,5 @@ libtrace_ip_t *trace_get_ip(libtrace_packet_t *packet);
  */
 //DLLEXPORT SIMPLE_FUNCTION
 libtrace_tcp_t *trace_get_tcp(libtrace_packet_t *packet);
-//@ requires valid_tcp_packet(packet, ?seq, ?head_len, ?fl);
-//@ ensures libtrace_tcp_p(result, seq, head_len, fl);
-
-/*@
-
-//Now, we can give the predicate for a well-formed packet, as we can specify the length relationships to each other and describe each type of packet
-//TODO: how to handle type?
-//inductive tcp_reorder_type 
-
-@*/
+//@ requires valid_tcp_packet(packet, ?seq, ?head_len, ?ty);
+//@ ensures libtrace_tcp_p(result, seq, head_len, ty);

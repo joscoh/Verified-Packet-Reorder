@@ -653,4 +653,40 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 }
 @*/
 
+/*@ 
+//TCP/IP Reordering + Semantics
+
+/* 
+Expected Sequence Number
+
+In the reorderer, the expected sequence number describes the next byte that has not yet been fully processed; ie: all bytes before exp_seq have been
+processed in order (inserted and popped from the reorderer). Different type of packets will trigger different events that update the expected
+sequence number based on the TCP semantics. The following type describes these events: 
+*/
+
+inductive tcp_reorder_effect = r_ignore | r_syn | r_ack | r_fin | r_rst | r_data | r_retransmit;
+
+/*
+How do we know what packet should trigger which effect?
+The semantics of these effects are as follows:
+1. If the packet type is SYN, this packet starts the flow, so it has effect r_syn.
+2. If the packet type is ACK and it has no data, it has effect r_ack. We don't need to worry about sequence number comparison here, since this packet does not
+	effect the sequence numbers at all. When popped, we don't need to update anything no matter what.
+3. If the packet has an earlier sequence number than expected, it has type r_retransmit. This refers to data that has been duplicated in some way.
+4. If the packet type is FIN or RST, it has effect r_fin or r_rst, respectively
+5. Otherwise, the packet is data and has type r_data
+6. r_ignore only results from an ill-formed or problematic packet
+*/
+
+fixpoint tcp_reorder_effect get_reorder_effect(tcp_type ty, int plen, int seq, int exp_seq) {
+	return 
+	(ty == syn ? r_syn :
+	(ty == ack && plen == 0 ? r_ack :
+	(cmp(exp_seq, seq) > 0 ? r_retransmit : 
+	(ty == fin ? r_fin :
+	(ty == rst ? r_rst : r_data)))));
+}
+@*/
+
+
 #endif
