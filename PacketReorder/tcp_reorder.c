@@ -352,7 +352,6 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 					if(it == end) {
 						close tcp_packet_single(it, end_seq);
 						close tcp_packet_partial_end(it, end, 0, l, end_seq, end_seq);
-						//assert(insert(seq, l) == cons(seq, l));
 						tcp_partial_packet_end_fold(tpkt, it, end, 0, insert(seq, l), seq, end_seq, end_seq);
 					}
 					else {
@@ -442,17 +441,8 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	}
 	//contradiction here - (hence the assert false statement) because we know seq cannot be larger than everything
 	//@ cmp_antisym2(end_seq, seq);
-		
-
-	assert(it != NULL);
 	
-	//NOTE: this is just insert, so here is plan:
-	// have our structure
-	//need notion that a packet is "in" the structure - show equiv to : we can split in two on this packet into partial
-	// keep track of it and prev - have that prev.seq <= it.seq and partial(start, prev), partial(it, end) 
-	//with next pointers appropriate (may need to change predicates or have partial(prev, end) or something or split into start -> a -> b -> end (better)
-	// invariant is that seq < it.seq 
-	//todo; verify insertion in dafny and see what invariant should be
+	assert(it != NULL);
 
 }
 
