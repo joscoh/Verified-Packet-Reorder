@@ -93,7 +93,7 @@ static int seq_cmp (uint32_t seq_a, uint32_t seq_b)
  * 	a pointer to a newly allocated TCP reorderer
  */
 tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet_callback *destroy_cb)
-//@ requires true;
+//@ requires is_read_packet_callback(cb) == true &*& destroy_cb != 0 &*& is_destroy_packet_callback(destroy_cb) == true;
 //@ ensures result == 0 ? true : tcp_packet_list_tp(result, nil, 0, 0);
 		//void *(*cb)(uint32_t, libtrace_packet_t *),
 		//void (*destroy_cb)(void *))
@@ -119,6 +119,8 @@ tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet
  * Parameters:
  * 	ord - the reorderer to be destroyed
  */
+ //NOTE: This function is unsafe: if ord->destroy_packet is zero, it free's data that may not have been malloc'ed. To avoid this,
+ //we assume that ord->destroy_packet is nonzero
 void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 //@ requires tcp_packet_list_tp(ord, ?seqs, ?start, ?end);
 //@ ensures true;
@@ -130,17 +132,19 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 	
 	/* Free any packets we may still be hanging onto */
 	while (head != NULL)
-	//@invariant ord->destroy_packet |-> _ &*& head == 0 ? true : tcp_packet_full(head, end, _, _);
+	//@invariant ord->destroy_packet |-> ?d &*& d != 0 &*& is_destroy_packet_callback(d) == true &*& head == 0 ? true : tcp_packet_full(head, end, _, _);
 	   {
 	   //@open tcp_packet_full(head, end, _, _);
 	   //@open tcp_packet_partial(head, end, _, _, _);
 	   //@open tcp_packet_single(head, _);
-	   ///@open tcp_packet_partial_aux(head, end, _, _);
-		if (ord->destroy_packet)
-			//TODO: Verifast has problems with this - might need pre/post conditions
+		if (ord->destroy_packet) {
+			//Need to do in 2 parts for Verifast
+			destroy_packet_callback *des = (ord->destroy_packet);
+			des(head->data);
 			//(*(ord->destroy_packet))(head->data);
-			free(head->data);
+			}
 		else
+			//JOSH - unreachable by assumption
 			free(head->data);
 		tmp = head;
 		head = head->next;
@@ -148,7 +152,6 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 		free(tmp);
 		/*@
 		if(head != 0) {
-			//close tcp_packet_partial(head, end, _, _, _);
 			close tcp_packet_full(head, end, _, _);
 		}
 		@*/
@@ -171,9 +174,9 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
  //JOSH - changed to int to reflect error state - malloc not working
 static int insert_packet(tcp_packet_list_t *ord, void *packet, 
 		uint32_t seq, uint32_t plen, double ts, tcp_reorder_t type)
-//@requires tcp_packet_list_tp(ord, ?l, ?start, ?end) &*& malloc_block(packet, plen) &*& chars(packet, plen, _) &*& inrange(seq) == true &*& !mem(seq, l);
+//@requires tcp_packet_list_tp(ord, ?l, ?start, ?end) &*& data_present(packet) &*& inrange(seq) == true &*& !mem(seq, l);
 /*@ ensures result == 0 ? 
-	tcp_packet_list_tp(ord, l, start, end) &*& malloc_block(packet, plen) &*& chars(packet, plen, _) 
+	tcp_packet_list_tp(ord, l, start, end) &*& data_present(packet)
 	: tcp_packet_list_tp(ord, insert(seq, l), ?start1, ?end1); @*/
 {
 

@@ -101,8 +101,21 @@ typedef struct tcp_pkt {
 
 } tcp_packet_t;
 
-//Macro in stdint give error because of target-dependent type
-//#define UINT32_MAX 4294967295UL 
+/*@
+//To handle the callbacks, we need to give specifications. To ensure that information is allocated and free'd, we give abstract head predictate data_present, which is
+//created when a read_packet_callback is called and destroyed when destroy_packet_callback is called.
+
+predicate data_present(void *data);
+
+@*/
+//Verifast will not parse inline definition
+typedef void *read_packet_callback(uint32_t exp, libtrace_packet_t *packet);
+//@ requires inrange(exp) == true;
+//@ ensures data_present(result);
+
+typedef void destroy_packet_callback(void *data);
+//@ requires data_present(data);
+//@ ensures true;
 	
 
 //TODO: for now, ignore data field except via exists
@@ -121,7 +134,7 @@ start != 0 &*& malloc_block_tcp_pkt(start) &*&
 //fields are initialized
 start->type |-> ?t &*& start->plen |-> ?plen &*& start->ts |-> ?ts &*& 
 // data is initialized
-start->data |-> ?data &*& malloc_block(data, plen) &*& chars(data, plen, _) &*& 
+start->data |-> ?data &*& data_present(data) &*& 
 //seq
 start->seq |-> seq &*& inrange(seq) == true;
 
@@ -157,12 +170,6 @@ predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> cont
 
 //TODO: see how to handle this
 //typedef struct libtrace_packet_t {} libtrace_packet_t;
-
-//Verifast will not parse inline definition
-typedef void *read_packet_callback(uint32_t exp, libtrace_packet_t *packet);
-
-typedef void destroy_packet_callback(void *data);
-
 
 
 /* A TCP reorderer - one is required for each half of a TCP connection */
@@ -200,7 +207,9 @@ typedef struct tcp_reorder {
 	predicate tcp_packet_list_wf(tcp_packet_list_t *reorder, tcp_packet_t *end, int length) =
 		malloc_block_tcp_reorder(reorder) &*&
       		//fields initialized
-      		reorder->expected_seq |-> _ &*& reorder->list_len |-> length &*& reorder->read_packet |-> _ &*& reorder->destroy_packet |-> _ &*&
+      		reorder->expected_seq |-> _ &*& reorder->list_len |-> length &*& reorder->read_packet |-> ?rp &*& reorder->destroy_packet |-> ?dp &*&
+      		is_read_packet_callback(rp) == true &*& 
+      		dp != 0 &*& is_destroy_packet_callback(dp) == true &*&
       		reorder->list_end |-> end;
 		
 
