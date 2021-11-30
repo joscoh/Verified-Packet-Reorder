@@ -673,6 +673,7 @@ The semantics of these effects are as follows:
 2. If the packet type is ACK and it has no data, it has effect r_ack. We don't need to worry about sequence number comparison here, since this packet does not
 	effect the sequence numbers at all. When popped, we don't need to update anything no matter what.
 3. If the packet has an earlier sequence number than expected, it has type r_retransmit. This refers to data that has been duplicated in some way.
+Note that these would not be FIN or RST packets, since they would close the connection, making the sender unable to send data again.
 4. If the packet type is FIN or RST, it has effect r_fin or r_rst, respectively
 5. Otherwise, the packet is data and has type r_data
 6. r_ignore only results from an ill-formed or problematic packet
@@ -685,6 +686,25 @@ fixpoint tcp_reorder_effect get_reorder_effect(tcp_type ty, int plen, int seq, i
 	(cmp(exp_seq, seq) > 0 ? r_retransmit : 
 	(ty == fin ? r_fin :
 	(ty == rst ? r_rst : r_data)))));
+}
+
+/* Next, we need to describe how the expected sequence number should be updated with each event. The semantics, based on RFC-793 and the definition of the expected
+sequence number, are as follows:
+1. If seq (the current sequence number) > exp_seq, there is a gap, and we should not update anything; we cannot process more bytes in order.
+1. A SYN packet (r_syn) or FIN packet (f_fin) increases the sequence number by 1 (data is ignored).
+2. An RST data does not affect the expected sequence number, since it closes the connection and no more data will be receieved.
+3. Suppose the expected sequence number is exp_seq, and the packet has effect r_retransmit with sequence number seq and length plen. Because of the effect (and since 
+	the expected sequence number is strictly increasing) exp_seq > seq. If seq + plen < exp_seq, we do not change the expected sequence (still, the same number of 
+	bytes are complete). Otherwise, update exp_seq to seq + plen, since now all bytes before have been processed.
+4. Otherwise (r_ack or r_data), updated exp_seq to be seq + plen. For an r_ack, plen = 0, so there is no change (which is correct; ACK packets do not change sequence numbers).
+	We know that seq <= exp_seq, so it is safe to update exp_seq to be seq+plen (all bytes will have been processed). */
+	
+fixpoint int update_exp_seq(tcp_reorder_effect ev, int plen, int seq, int exp_seq) {
+	return
+	(cmp(seq, exp_seq) > 0 || ev == r_rst ? exp_seq :
+	(ev == r_syn || ev == r_fin ? exp_seq + 1 :
+	(ev == r_retransmit ? (cmp(seq + plen, exp_seq) > 0 ? seq + plen : exp_seq) :
+	seq + plen)));
 }
 @*/
 
