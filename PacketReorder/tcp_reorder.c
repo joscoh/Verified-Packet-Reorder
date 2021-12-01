@@ -480,6 +480,8 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 
 	seq = ntohl(tcp->seq);
 	plen = (htons(ip->ip_len) - (ip->ip_hl * 4) - (tcp->doff * 4));
+	//JOSH - no idea why they use htons here - should be ntohs since we want plen to be in host byte order. But for all real purposes (eg: Linux), htons and ntohs are the same function,
+	//so this is OK. Even in the paper about libtrace, they use ntohs(ip->ip_len) in their example, so I think this is a mistake.
 	pkt_ts = trace_get_seconds(packet);
 
 	/* Pass the packet off to the read callback to extract the appropriate

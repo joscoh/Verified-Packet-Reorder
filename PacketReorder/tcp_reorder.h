@@ -29,6 +29,7 @@
 #define TCP_REORDER_H_
 
 #include <stdint.h>
+#include "in.h" //In real code, this is netinet/in.h, but we want to give specs for ntohl and htons
 
 //@ #include "listex.gh"
 //@ #include "sort.gh"

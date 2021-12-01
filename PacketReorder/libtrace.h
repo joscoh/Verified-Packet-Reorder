@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <pthread.h>
+#include "in.h" //This would be netinet/in.h on Linux
 
 //JOSH - only include parts of libtrace.h that we need
 //The file is just comprised of subsets of libtrace.h, with the following modifications
@@ -323,7 +324,7 @@ typedef struct libtrace_ip
 
 //Takes in head_len and len in bytes (NOT 32 bit words)
 predicate libtrace_ip_p(libtrace_ip_t *ip, int head_len, int len) =
-	ip != 0 &*& ip->ip_hl |-> ?head &*& 4 * head == head_len &*& ip->ip_len |-> len;
+	ip != 0 &*& ip->ip_hl |-> ?head &*& 4 * head == head_len &*& ip->ip_len |-> ?ip_len &*& ntohs(ip_len) == len &*& 0 <= len &*& len <= UINT16_MAX;
 
 @*/
 
@@ -393,6 +394,7 @@ fixpoint option<tcp_type> tcp_flags_to_type (int f_ack, int f_rst, int f_syn, in
 
 predicate libtrace_tcp_p (libtrace_tcp_t *tcp, int seq, int head_len, tcp_type ty) =
 	tcp != 0 &*& tcp->doff |-> ?len &*& 4 * len == head_len &*& tcp->syn |-> ?syn &*& tcp->ack |-> ?ack &*& tcp->fin |-> ?fin &*& tcp->rst |-> ?rst &*&
+	tcp->seq |-> ?seq_net &*& ntohl(seq_net) == seq &*& 0 <= seq &*& seq <= UINT32_MAX &*&
 	tcp_flags_to_type(ack, rst, syn, fin) == some(ty);
 
 @*/
@@ -452,5 +454,5 @@ libtrace_tcp_t *trace_get_tcp(libtrace_packet_t *packet);
 //TODO: do we need anything else in predicate?
 predicate valid_packet(libtrace_packet_t *packet, int ip_head_len, int ip_len, int tcp_head_len, int seq, int plen, tcp_type ty) =
 	valid_tcp_packet(packet, seq, tcp_head_len, ty) &*& valid_ip_packet(packet, ip_head_len, ip_len) &*& plen == ip_len - ip_head_len - tcp_head_len &*&
-	plen >= 0;
+	0 <= plen;
 	@*/
