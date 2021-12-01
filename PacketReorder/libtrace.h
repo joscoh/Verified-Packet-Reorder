@@ -452,7 +452,7 @@ libtrace_tcp_t *trace_get_tcp(libtrace_packet_t *packet);
 //Valid Libtrace IP/TCP Packets
 
 //TODO: do we need anything else in predicate?
-predicate valid_packet(libtrace_packet_t *packet, int ip_head_len, int ip_len, int tcp_head_len, int seq, int plen, tcp_type ty) =
-	valid_tcp_packet(packet, seq, tcp_head_len, ty) &*& valid_ip_packet(packet, ip_head_len, ip_len) &*& plen == ip_len - ip_head_len - tcp_head_len &*&
+predicate valid_packet(libtrace_packet_t *packet, int seq, int plen, tcp_type ty) =
+	valid_tcp_packet(packet, seq, ?tcp_head_len, ty) &*& valid_ip_packet(packet, ?ip_head_len, ?ip_len) &*& plen == ip_len - ip_head_len - tcp_head_len &*&
 	0 <= plen;
 	@*/

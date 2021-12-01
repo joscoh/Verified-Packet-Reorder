@@ -213,9 +213,9 @@ typedef struct tcp_reorder {
       		dp != 0 &*& is_destroy_packet_callback(dp) == true &*&
       		reorder->list_end |-> end;
 		
-
- 	predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end, int exp_seq) =
-		tcp_packet_list_wf(reorder, end, length(contents), exp_seq) &*& reorder->list |-> start &*&
+	//We don't need to expose start and end; we only care about the contents and the expected sequence number
+ 	predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, int exp_seq) =
+		tcp_packet_list_wf(reorder, ?end, length(contents), exp_seq) &*& reorder->list |-> ?start &*&
 		// either empty or well-formed packet
 		start == 0 ? end == 0 && contents == nil:
 		tcp_packet_full(start, end, contents, _);
