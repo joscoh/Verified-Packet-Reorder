@@ -94,7 +94,7 @@ static int seq_cmp (uint32_t seq_a, uint32_t seq_b)
  */
 tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet_callback *destroy_cb)
 //@ requires is_read_packet_callback(cb) == true &*& destroy_cb != 0 &*& is_destroy_packet_callback(destroy_cb) == true;
-//@ ensures result == 0 ? true : tcp_packet_list_tp(result, nil, 0, 0);
+//@ ensures result == 0 ? true : tcp_packet_list_tp(result, nil, 0, 0, 0);
 		//void *(*cb)(uint32_t, libtrace_packet_t *),
 		//void (*destroy_cb)(void *))
 		 {
@@ -108,8 +108,8 @@ tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet
 	ord->read_packet = cb;
 	ord->destroy_packet = destroy_cb;
 	ord->list_len = 0;
-	//@close tcp_packet_list_wf(ord, 0, 0);
-	//@close tcp_packet_list_tp(ord, nil, 0, 0);
+	//@close tcp_packet_list_wf(ord, 0, 0, 0);
+	//@close tcp_packet_list_tp(ord, nil, 0, 0, 0);
 
 	return ord;
 }
@@ -122,11 +122,11 @@ tcp_packet_list_t *tcp_create_reorderer(read_packet_callback *cb, destroy_packet
  //NOTE: This function is unsafe: if ord->destroy_packet is zero, it free's data that may not have been malloc'ed. To avoid this,
  //we assume that ord->destroy_packet is nonzero
 void tcp_destroy_reorderer(tcp_packet_list_t *ord)
-//@ requires tcp_packet_list_tp(ord, ?seqs, ?start, ?end);
+//@ requires tcp_packet_list_tp(ord, ?seqs, ?start, ?end, ?exp_seq);
 //@ ensures true;
 {
-	//@open tcp_packet_list_tp(ord, seqs, start, end);
-	//@open tcp_packet_list_wf(ord, end, _);
+	//@open tcp_packet_list_tp(ord, seqs, start, end, exp_seq);
+	//@open tcp_packet_list_wf(ord, end, _, exp_seq);
 	tcp_packet_t *head = ord->list;
 	tcp_packet_t *tmp;
 	
@@ -174,10 +174,10 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
  //JOSH - changed to int to reflect error state - malloc not working
 static int insert_packet(tcp_packet_list_t *ord, void *packet, 
 		uint32_t seq, uint32_t plen, double ts, tcp_reorder_t type)
-//@requires tcp_packet_list_tp(ord, ?l, ?start, ?end) &*& data_present(packet) &*& inrange(seq) == true &*& !mem(seq, l);
+//@requires tcp_packet_list_tp(ord, ?l, ?start, ?end, ?exp_seq) &*& data_present(packet) &*& inrange(seq) == true &*& !mem(seq, l);
 /*@ ensures result == 0 ? 
-	tcp_packet_list_tp(ord, l, start, end) &*& data_present(packet)
-	: tcp_packet_list_tp(ord, insert(seq, l), ?start1, ?end1); @*/
+	tcp_packet_list_tp(ord, l, start, end, exp_seq) &*& data_present(packet)
+	: tcp_packet_list_tp(ord, insert(seq, l), ?start1, ?end1, exp_seq); @*/
 {
 
 	tcp_packet_t *tpkt = (tcp_packet_t *)malloc(sizeof(tcp_packet_t));
@@ -194,8 +194,8 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	
 	//@close tcp_packet_single(tpkt, seq);
 	
-	//@open tcp_packet_list_tp(ord, l, start, end);
-	//@open tcp_packet_list_wf(ord, end, length(l));
+	//@open tcp_packet_list_tp(ord, l, start, end, exp_seq);
+	//@open tcp_packet_list_wf(ord, end, length(l), exp_seq);
 
 	/* If we're the first thing to go into the list, this is pretty easy */
 	if (ord->list == NULL) {
@@ -205,8 +205,8 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		ord->list_len += 1;
 		//@close tcp_packet_partial(tpkt, tpkt, 0, insert(seq, nil), _);
 		//@close tcp_packet_full(tpkt, tpkt, insert(seq, nil), _);
-		//@close tcp_packet_list_wf(ord, tpkt, 1); 
-		//@close tcp_packet_list_tp(ord, insert(seq, nil), tpkt, tpkt);
+		//@close tcp_packet_list_wf(ord, tpkt, 1, exp_seq); 
+		//@close tcp_packet_list_tp(ord, insert(seq, nil), tpkt, tpkt, exp_seq);
 		return 1;
 	}
 	
@@ -240,8 +240,8 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		//@partial_app(start, end, tpkt, tpkt, 0, l, cons(seq, nil), start_seq, seq, end_seq, seq);
 		//@partial_end_implies_start(start, tpkt, 0, insert(seq, l), start_seq, seq);
 		//@close tcp_packet_full(start, tpkt, insert(seq, l), _);
-		//@close tcp_packet_list_wf(ord, tpkt, 1 + length(l));
-		//@close tcp_packet_list_tp(ord, insert(seq, l), start, tpkt);		
+		//@close tcp_packet_list_wf(ord, tpkt, 1 + length(l), exp_seq);
+		//@close tcp_packet_list_tp(ord, insert(seq, l), start, tpkt, exp_seq);		
 		return 1;
 	}
 	
@@ -250,7 +250,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	//Establish invariants
 	//@close tcp_packet_single(end, end_seq);
 	//@close tcp_packet_partial_end(start, end, 0, l, start_seq, end_seq);
-	//@close tcp_packet_list_wf(ord, end, length(l));
+	//@close tcp_packet_list_wf(ord, end, length(l), exp_seq);
 	
 	//It will also be helpful to know that seq != end_seq
 	//@partial_end_contents_mem(start, end, 0, l, start_seq, end_seq);
@@ -264,7 +264,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	while(it!= NULL)
 	//for (it = ord->list; it != NULL; it = it->next)
 	/*@
-	 invariant tcp_packet_single(tpkt, seq) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l)) &*& ord->list |-> start &*&
+	 invariant tcp_packet_single(tpkt, seq) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l), exp_seq) &*& ord->list |-> start &*&
 	 	tcp_packet_partial_end_gen(start, prev, it, ?l1, start_seq, ?prev_seq) &*& tcp_packet_partial_end_gen(it, end, 0, ?l2, ?it_seq, end_seq) &*&
 	 	append(l1, l2) == l &*& 
 		prev == 0 && it != 0 ? start == it && it_seq == start_seq
@@ -302,7 +302,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	      	@*/
 	      	// this was the goal - now we can access it->seq
 	      	//@ open tcp_packet_single(tpkt, seq);
-	      	//@ open tcp_packet_list_wf(ord, end, length(l));
+	      	//@ open tcp_packet_list_wf(ord, end, length(l), exp_seq);
 	      	
 		if (seq_cmp(it->seq, seq) > 0) {
 			tpkt->next = it;
@@ -347,8 +347,8 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 					partial_app(start, prev, tpkt, end, 0, l1, insert(seq, l2), start_seq, seq, prev_seq, end_seq);
 					partial_end_implies_start(start, end, 0, insert(seq, l), start_seq, end_seq);
 					close tcp_packet_full(start, end, insert(seq, l), start_seq);
-					close tcp_packet_list_wf(ord, end, length(insert(seq, l)));
-					close tcp_packet_list_tp(ord, insert(seq, l), start, end);
+					close tcp_packet_list_wf(ord, end, length(insert(seq, l)), exp_seq);
+					close tcp_packet_list_tp(ord, insert(seq, l), start, end, exp_seq);
 				}
 				else {
 					// In each case, we need to show that we have tcp_partial_end(tpkt, end, 0, insert(seq, l), seq, _, end_seq);
@@ -368,8 +368,8 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 					// In both cases, close all remaining predicates
 					partial_end_implies_start(tpkt, end, 0, insert(seq, l), seq, end_seq);
 					close tcp_packet_full(tpkt, end, insert(seq, l), seq);
-					close tcp_packet_list_wf(ord, end, length(insert(seq, l)));
-					close tcp_packet_list_tp(ord, insert(seq, l), tpkt, end);
+					close tcp_packet_list_wf(ord, end, length(insert(seq, l)), exp_seq);
+					close tcp_packet_list_tp(ord, insert(seq, l), tpkt, end, exp_seq);
 				}
 			@*/	
 		
@@ -383,7 +383,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		it = it->next;
 		//Preservation of loop invariant
 		//@close tcp_packet_single(tpkt, seq);
-		//@close tcp_packet_list_wf(ord, end, length(l));
+		//@close tcp_packet_list_wf(ord, end, length(l), exp_seq);
 		//prove cmp(end_seq, seq) < 0
 		/*@
 			if(cmp(end_seq, seq) == 0) { 

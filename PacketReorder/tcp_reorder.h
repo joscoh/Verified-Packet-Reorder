@@ -204,17 +204,17 @@ typedef struct tcp_reorder {
 
 	//All of the non-contents/start parts of a tcp reorderer, which we bundle together because most are not changing. This is mostly helpful for the loop invariant in insert,
 	//since we need ord->list but the others are not accessed.
-	predicate tcp_packet_list_wf(tcp_packet_list_t *reorder, tcp_packet_t *end, int length) =
+	predicate tcp_packet_list_wf(tcp_packet_list_t *reorder, tcp_packet_t *end, int length, int exp_seq) =
 		malloc_block_tcp_reorder(reorder) &*&
       		//fields initialized
-      		reorder->expected_seq |-> _ &*& reorder->list_len |-> length &*& reorder->read_packet |-> ?rp &*& reorder->destroy_packet |-> ?dp &*&
+      		reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> ?rp &*& reorder->destroy_packet |-> ?dp &*&
       		is_read_packet_callback(rp) == true &*& 
       		dp != 0 &*& is_destroy_packet_callback(dp) == true &*&
       		reorder->list_end |-> end;
 		
 
- 	predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end) =
-		tcp_packet_list_wf(reorder, end, length(contents)) &*& reorder->list |-> start &*&
+ 	predicate tcp_packet_list_tp(tcp_packet_list_t *reorder, list<int> contents, tcp_packet_t *start, tcp_packet_t *end, int exp_seq) =
+		tcp_packet_list_wf(reorder, end, length(contents), exp_seq) &*& reorder->list |-> start &*&
 		// either empty or well-formed packet
 		start == 0 ? end == 0 && contents == nil:
 		tcp_packet_full(start, end, contents, _);
