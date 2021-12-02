@@ -8,6 +8,8 @@
 //2. remove pthread_mutex_t ref_lock from packet data structure because included pthread.h is too limited
 //3. Change bitfields in ip and tcp structs to regular fields because Verifast does not support bitfields
 
+//@ #include "tcp_type.gh"
+
 #define LT_USE_PACKED 1
 #if LT_USE_PACKED
 #  define PACKED __attribute__((packed))
@@ -416,21 +418,6 @@ libtrace_ip_t *trace_get_ip(libtrace_packet_t *packet);
 
 /*@
 //We need more information about the TCP structure, since we need to keep track of the header length, sequence number, and packet type
-inductive tcp_type = syn | ack | fin | rst | syn_ack | fin_ack | rst_ack;
-
-//Based on flags, what is tcp packet type?
-//We differentiate between syn-ack, fin-ack, and just ack packets, since ack packets with no data will not increase the sequence number.
-//Of the syn, fin, and rst flags, only 1 should be set to 1, though the ack flag may also be set in any of these.
-fixpoint option<tcp_type> tcp_flags_to_type (int f_ack, int f_rst, int f_syn, int f_fin) {
-	//SYN packet
-	return (f_syn != 0 && f_fin == 0 && f_rst == 0 ? (f_ack != 0 ? some(syn_ack) : some(syn)) :
-	//FIN packet
-	(f_fin != 0 && f_syn == 0 && f_rst == 0 ? (f_ack != 0 ? some(fin_ack) : some(fin)) :
-	//RST packet
-	(f_rst != 0 && f_syn == 0 && f_fin == 0 ? (f_ack != 0 ? some(rst_ack) : some(rst)) :
-	//ACK packet
-	(f_ack != 0 && f_syn == 0 && f_fin == 0 && f_rst == 0 ? some(ack) : none))));
-}
 
 //TCP pointers we need
 fixpoint unsigned int *tcp_head_len_ptr(libtrace_packet_t *packet);
@@ -459,63 +446,8 @@ predicate libtrace_tcp_p (libtrace_packet_t *packet, libtrace_tcp_t *tcp, int se
 	&(tcp->ack) == tcp_ack_ptr(packet) &&
 	&(tcp->fin) == tcp_fin_ptr(packet) &&
 	&(tcp->rst) == tcp_rst_ptr(packet);
-	
-
-
 
 @*/
-
-/*
-predicate libtrace_ip_p(libtrace_packet_t *packet, libtrace_ip_t *ip, int head_len, int len) =
-	
-	ip != 0 && &(ip->ip_hl) == ip_head_len_ptr(packet)  && &(ip->ip_len) == ip_len_ptr(packet);
-
-
-
-
-
-predicate libtrace_tcp_p (libtrace_tcp_t *tcp, int seq, int head_len, tcp_type ty) =
-	tcp != 0 &*& tcp->doff |-> ?len &*& 4 * len == head_len &*& tcp->syn |-> ?syn &*& tcp->ack |-> ?ack &*& tcp->fin |-> ?fin &*& tcp->rst |-> ?rst &*&
-	tcp->seq |-> ?seq_net &*& ntohl(seq_net) == seq &*& 0 <= seq &*& seq <= UINT32_MAX &*&
-	tcp_flags_to_type(ack, rst, syn, fin) == some(ty);
-	*/
-
-/*@
-//We need to deal with the trace_get_ip and trace_get_tcp functions. We need to know that these correspond to some (abstract) functions, which we can then use
-//for a general predicate about well-formed TCP/IP libtrace packets. 
-//However, specifying the IP/TCP structs is more complicated than it seems. They are not separately allocated, but rather just pointers into the different parts of the packet
-//data that contain the different headers. So we cannot put them as separate predicates, or else we are saying they are separate heap chunks (and functions leak memory).
-//Instead, we define uninterpreted functions for the locations of the packet elements as pointers, then say that in the IP/TCP structs, the struct elements are equal to
-//these dereferenced pointers. Thus, a well-formed IP/TCP struct is only well-formed with reference to a given packet.
-
-//Making these fixpoints (implicitly) assumes that we are only doing simple arithmetic to get these pointers; there is no mutation or memory allocation.
-
-//TCP pointers we need
-
-
-//TODO: ACK, SYN, FIN, RST
-
-
-	
-//Now, we do the same thing for TCP fields
-	
-
-	
-	//ip != 0 &*& ip->ip_hl |-> ?head &*& 4 * head == head_len &*& ip->ip_len |-> ?ip_len &*& ntohs(ip_len) == len &*& 0 <= len &*& len <= UINT16_MAX;
-
-
-
-//predicate valid_tcp_ip_packet(libtrace_packet_t *packet) = valid_ip_packet(packet) && valid_tcp_packet(packet);
-
-//For the trace_get_ip and trace_get_tcp predicates, we have a problem. Libtrace builds these structs directly from the packet bytes, so that there is no additional allocated memory.
-//This is very difficult to specify without going deep into the libtrace internals, so we assume that there is simply some (other) IP and TCP structs populated with appropriate information
-
-@*/
-
-
-
-
-
 
 /** Get a pointer to the TCP header (if present)
  * @param packet  	The packet to get the TCP header from

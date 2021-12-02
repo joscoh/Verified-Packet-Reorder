@@ -33,12 +33,14 @@
 
 //@ #include "listex.gh"
 //@ #include "sort.gh"
+//@ #include "tcp_semantics.gh"
 
 #include "libtrace.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 
 /* Used to distinguish between different TCP events */
 typedef enum {
@@ -63,6 +65,23 @@ typedef enum {
 	/* Retransmitted TCP packet */
 	TCP_REORDER_RETRANSMIT
 } tcp_reorder_t;
+
+/*@
+
+//Relate tcp_reorder_effect to this enum
+
+fixpoint tcp_reorder_t effect_to_reorder_t (tcp_reorder_effect eff) {
+	switch(eff) {
+		case r_ignore: return TCP_REORDER_IGNORE;
+		case r_syn: return TCP_REORDER_SYN;
+		case r_ack: return TCP_REORDER_ACK;
+		case r_fin: return TCP_REORDER_FIN;
+		case r_rst: return TCP_REORDER_RST;
+		case r_data: return TCP_REORDER_DATA;
+		case r_retransmit: return TCP_REORDER_RETRANSMIT;
+	}
+}
+@*/
 
 /* An entry in the reordering list for a TCP packet */
 typedef struct tcp_pkt {
@@ -126,7 +145,7 @@ start->data |-> ?data &*& data_present(data) &*&
 start->seq |-> seq &*& inrange(seq) == true;
 
 // This is the natural way to express a linked list with start and end pointers. It is useful for getting information about the start node, but not the end node.
-
+//TODO: HERE
 predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq) =
 tcp_packet_single(start, seq) &*& start->next |-> ?next &*&
 // sortedness/contents
@@ -145,18 +164,12 @@ tcp_packet_single(end, end_seq) &*& end != 0 &*& end->next |-> end_next &*& sort
 predicate tcp_packet_partial_end_gen(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<int> contents, int seq, int end_seq) =
 	start != 0 && end != 0 ? tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) : contents == nil; 
 	
-	
 //The overall predicate just says that additionally, the last packet points to NULL
 
 predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<int> contents, int seq) =
 	end != 0 &*& tcp_packet_partial(start, end, 0, contents, seq);
 
 @*/
-
-
-
-//TODO: see how to handle this
-//typedef struct libtrace_packet_t {} libtrace_packet_t;
 
 
 /* A TCP reorderer - one is required for each half of a TCP connection */
@@ -640,76 +653,5 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 	}
 }
 @*/
-
-/*@ 
-//TCP/IP Reordering + Semantics
-
-/* 
-Expected Sequence Number
-
-In the reorderer, the expected sequence number describes the next byte that has not yet been fully processed; ie: all bytes before exp_seq have been
-processed in order (inserted and popped from the reorderer). Different type of packets will trigger different events that update the expected
-sequence number based on the TCP semantics. The following type describes these events: 
-*/
-
-inductive tcp_reorder_effect = r_ignore | r_syn | r_ack | r_fin | r_rst | r_data | r_retransmit;
-
-//Relate this effect to the enum
-
-fixpoint tcp_reorder_t effect_to_reorder_t (tcp_reorder_effect eff) {
-	switch(eff) {
-		case r_ignore: return TCP_REORDER_IGNORE;
-		case r_syn: return TCP_REORDER_SYN;
-		case r_ack: return TCP_REORDER_ACK;
-		case r_fin: return TCP_REORDER_FIN;
-		case r_rst: return TCP_REORDER_RST;
-		case r_data: return TCP_REORDER_DATA;
-		case r_retransmit: return TCP_REORDER_RETRANSMIT;
-	}
-}
-
-
-/*
-How do we know what packet should trigger which effect?
-The semantics of these effects are as follows:
-1. If the packet type is SYN, this packet starts the flow, so it has effect r_syn.
-2. If the packet type is ACK and it has no data, it has effect r_ack. We don't need to worry about sequence number comparison here, since this packet does not
-	effect the sequence numbers at all. When popped, we don't need to update anything no matter what.
-3. If the packet has an earlier sequence number than expected, it has type r_retransmit. This refers to data that has been duplicated in some way.
-Note that these would not be FIN or RST packets, since they would close the connection, making the sender unable to send data again.
-4. If the packet type is FIN or RST, it has effect r_fin or r_rst, respectively
-5. Otherwise, the packet is data and has type r_data
-6. r_ignore only results from an ill-formed or problematic packet
-*/
-//NOTE: RST-ACK packets are treated as ACK packets by the code. This doesn't cause problems, since both of these packets do not change expected sequence number, but it is probably a mistake.
-fixpoint tcp_reorder_effect get_reorder_effect(tcp_type ty, int plen, int seq, int exp_seq) {
-	return 
-	((ty == syn || ty == syn_ack) ? r_syn :
-	((ty == ack || ty == rst_ack) && plen == 0 ? r_ack :
-	(cmp(exp_seq, seq) > 0 ? r_retransmit : 
-	((ty == fin || ty == fin_ack) ? r_fin :
-	((ty == rst || ty == rst_ack) ? r_rst : r_data)))));
-}
-
-/* Next, we need to describe how the expected sequence number should be updated with each event. The semantics, based on RFC-793 and the definition of the expected
-sequence number, are as follows:
-1. If seq (the current sequence number) > exp_seq, there is a gap, and we should not update anything; we cannot process more bytes in order.
-1. A SYN packet (r_syn) or FIN packet (f_fin) increases the sequence number by 1 (data is ignored).
-2. An RST data does not affect the expected sequence number, since it closes the connection and no more data will be receieved.
-3. Suppose the expected sequence number is exp_seq, and the packet has effect r_retransmit with sequence number seq and length plen. Because of the effect (and since 
-	the expected sequence number is strictly increasing) exp_seq > seq. If seq + plen < exp_seq, we do not change the expected sequence (still, the same number of 
-	bytes are complete). Otherwise, update exp_seq to seq + plen, since now all bytes before have been processed.
-4. Otherwise (r_ack or r_data), updated exp_seq to be seq + plen. For an r_ack, plen = 0, so there is no change (which is correct; ACK packets do not change sequence numbers).
-	We know that seq <= exp_seq, so it is safe to update exp_seq to be seq+plen (all bytes will have been processed). */
-	
-fixpoint int update_exp_seq(tcp_reorder_effect ev, int plen, int seq, int exp_seq) {
-	return
-	(cmp(seq, exp_seq) > 0 || ev == r_rst ? exp_seq :
-	(ev == r_syn || ev == r_fin ? exp_seq + 1 :
-	(ev == r_retransmit ? (cmp(seq + plen, exp_seq) > 0 ? seq + plen : exp_seq) :
-	seq + plen)));
-}
-@*/
-
 
 #endif

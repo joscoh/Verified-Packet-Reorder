@@ -586,7 +586,11 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
  * 	returned.
  *
  */
-tcp_packet_t *tcp_pop_packet(tcp_packet_list_t *ord) {
+tcp_packet_t *tcp_pop_packet(tcp_packet_list_t *ord)
+///@requires tcp_packet_list_tp(ord, ?l, ?exp_seq)
+///@ensures l == nil ? result == 0 &*& tcp_packet_list(ord, l, exp_seq) :
+ 
+   {
 
 	tcp_packet_t *head = ord->list;
 

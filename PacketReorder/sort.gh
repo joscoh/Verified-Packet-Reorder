@@ -3,64 +3,10 @@
 
 #include <listex.gh>
 
-/* Comparison */
+#include "tcp_semantics.gh"
 
-// We cannot faithfully prove the cmp function correct because it uses intentional overflow, which Verifast cannot handle. We could
-// provide a definition which is correct, but we don't need the definition anywhere; we only need to know that this function satisfies
-// a few properties. We prove these properties correct in Coq based on the C code, since VST can handle overflow.
-// Therefore, we leave cmp opaque and give the needed properties as axioms.
-
-fixpoint int cmp(int a, int b);
-
-// cmp is not a true comparison because of wraparound. But it works correctly if, for all elements x and y, |x-y| < 2^31 or for all x, y, |x-y| >= 2^31
-// (we proved this in Coq). To make things simpler, we assume here that all elements are in the range [0, 2^31-1] (ie: positive signed integers).
-
-// x is in the range [0, 2^31-1]
-fixpoint bool inrange(int x) {
-	return (0 <= x) && (x <= 2147483647);
-}
-
-lemma void cmp_same(int a);
-requires true;
-ensures cmp(a, a) == 0;
-
-lemma void cmp_inj(int a, int b);
-requires (0 <= a) && (a <= 4294967295) && (0 <= b) && (b <= 4294967295) && cmp(a,b) == 0;
-ensures a == b;
-
-lemma void cmp_antisym1(int a, int b);
-requires inrange(a) == true && inrange(b) == true && cmp(a,b) > 0;
-ensures cmp(b,a) < 0; 
-
-lemma void cmp_antisym2(int a, int b);
-requires inrange(a) == true && inrange(b) == true && cmp(a,b) < 0;
-ensures cmp(b,a) > 0; 
-
-lemma void cmp_ge_trans(int a, int b, int c);
-requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) >= 0 && cmp(b, c) >= 0;
-ensures cmp(a, c) >= 0; 
-
-lemma void cmp_gt_trans(int a, int b, int c);
-requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) > 0 && cmp(b, c) > 0;
-ensures cmp(a, c) > 0; 
-
-//We can prove this one
-lemma void cmp_gt_ge_trans(int a, int b, int c)
-requires inrange(a) == true && inrange(b) == true && inrange(c) == true && cmp(a, b) > 0 && cmp(b, c) >= 0;
-ensures cmp(a, c) > 0; 
-{
-	if(cmp(b, c) == 0) {
-		cmp_inj(b, c);
-	} 
-	else {
-		cmp_gt_trans(a, b, c);
-	}
-	
-	
-}
 
 /* Sorting */
-
 
 // We want to say that the list (of sequence numbers) is (strongly) sorted. We define a sorted predicate and a function to insert into a sorted list. These are standard.
 
