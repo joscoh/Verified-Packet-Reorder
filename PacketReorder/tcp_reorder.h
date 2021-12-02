@@ -681,14 +681,14 @@ Note that these would not be FIN or RST packets, since they would close the conn
 5. Otherwise, the packet is data and has type r_data
 6. r_ignore only results from an ill-formed or problematic packet
 */
-
+//NOTE: RST-ACK packets are treated as ACK packets by the code. This doesn't cause problems, since both of these packets do not change expected sequence number, but it is probably a mistake.
 fixpoint tcp_reorder_effect get_reorder_effect(tcp_type ty, int plen, int seq, int exp_seq) {
 	return 
-	(ty == syn ? r_syn :
-	(ty == ack && plen == 0 ? r_ack :
+	((ty == syn || ty == syn_ack) ? r_syn :
+	((ty == ack || ty == rst_ack) && plen == 0 ? r_ack :
 	(cmp(exp_seq, seq) > 0 ? r_retransmit : 
-	(ty == fin ? r_fin :
-	(ty == rst ? r_rst : r_data)))));
+	((ty == fin || ty == fin_ack) ? r_fin :
+	((ty == rst || ty == rst_ack) ? r_rst : r_data)))));
 }
 
 /* Next, we need to describe how the expected sequence number should be updated with each event. The semantics, based on RFC-793 and the definition of the expected

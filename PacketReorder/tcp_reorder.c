@@ -463,13 +463,14 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
  */
 tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord, 
 	libtrace_packet_t *packet)
-//@ requires valid_packet(packet, ?seqnum, ?plength, ?ty) &*& tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& inrange(seqnum) == true;
-/*@ ensures valid_packet(packet, seqnum, plength, ty) &*& data_present(?data) &*&
+//@ requires valid_packet(packet, ?seqnum, ?plength, ?ty) &*& tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& inrange(seqnum) == true &*& !mem(seqnum, l);
+/*@ ensures valid_packet(packet, seqnum, plength, ty) &*&
 	result == effect_to_reorder_t(r_ignore) ?
-		(get_reorder_effect(ty, plength, seqnum, exp_seq) == r_syn ? tcp_packet_list_tp(ord, l, seqnum) : tcp_packet_list_tp(ord, l, exp_seq)) :
+		(get_reorder_effect(ty, plength, seqnum, exp_seq) == r_syn
+			 ? tcp_packet_list_tp(ord, l, seqnum) : tcp_packet_list_tp(ord, l, exp_seq)) :
 	result == effect_to_reorder_t(get_reorder_effect(ty, plength, seqnum, exp_seq)) &*&
 	result == effect_to_reorder_t(r_syn) ? tcp_packet_list_tp(ord, insert(seqnum, l), seqnum) :
-	tcp_packet_list_tp(ord, insert(seqnum, l), exp_seq);
+		tcp_packet_list_tp(ord, insert(seqnum, l), exp_seq);
 @*/
 {
 	libtrace_ip_t *ip;
@@ -497,6 +498,8 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	seq = ntohl(tcp->seq);
 	//JOSH - need to insert casts to make Verifast happy (this won't overflow because of packet specs, but Verifast doesn't check that yet)
 	plen = ((uint32_t) (htons(ip->ip_len)) - ((uint32_t) (ip->ip_hl * 4)) - ((uint32_t) (tcp->doff * 4)));
+	//@uint16_t ip_len_0 = ip->ip_len;
+	//@htons_ntohs(ip_len_0);
 	//JOSH - no idea why they use htons here - should be ntohs since we want plen to be in host byte order. But for all real purposes (eg: Linux), htons and ntohs are the same function,
 	//so this is OK. Even in the paper about libtrace, they use ntohs(ip->ip_len) in their example, so I think this is a mistake.
 	pkt_ts = trace_get_seconds(packet);
@@ -521,7 +524,10 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	}
 
 	else if (tcp->ack && !tcp->fin && plen == 0)
+		
 		type = TCP_REORDER_ACK;
+		///@assert(ty == ack || ty == rst_ack);
+	
 
 	else if (seq_cmp(ord->expected_seq, seq) > 0)
 		type = TCP_REORDER_RETRANSMIT;
@@ -550,12 +556,19 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	/* Now actually push it on to the list */
 	//JOSH - handle failure case
 	int res = insert_packet(ord, packet_data, seq, plen, pkt_ts, type);
-	if (res == 0) type = TCP_REORDER_IGNORE;
+	if (res == 0) {
+		type = TCP_REORDER_IGNORE;
+		//@open tcp_packet_list_tp(ord, l, ?s);
+		//@open tcp_packet_list_wf(ord, ?e, length(l), s);
+		destroy_packet_callback *dp = ord->destroy_packet;
+		dp(packet_data);
+		//@close tcp_packet_list_wf(ord, e, length(l), s);
+		//@close tcp_packet_list_tp(ord, l, s);
+	}
 	//@ close valid_ip_packet(packet, ip_head_len, ip_len);
 	//@ close valid_tcp_packet(packet, seqnum, tcp_head_len, ty);
 	//@ close valid_packet(packet, seqnum, plength, ty);
 	return type;
-	//@assume(false);
 
 }
 

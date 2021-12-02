@@ -416,21 +416,20 @@ libtrace_ip_t *trace_get_ip(libtrace_packet_t *packet);
 
 /*@
 //We need more information about the TCP structure, since we need to keep track of the header length, sequence number, and packet type
-
-inductive tcp_type = syn | ack | fin | rst;
+inductive tcp_type = syn | ack | fin | rst | syn_ack | fin_ack | rst_ack;
 
 //Based on flags, what is tcp packet type?
 //We differentiate between syn-ack, fin-ack, and just ack packets, since ack packets with no data will not increase the sequence number.
 //Of the syn, fin, and rst flags, only 1 should be set to 1, though the ack flag may also be set in any of these.
 fixpoint option<tcp_type> tcp_flags_to_type (int f_ack, int f_rst, int f_syn, int f_fin) {
 	//SYN packet
-	return (f_syn == 1 && f_fin == 0 && f_rst == 0 ? some(syn) :
+	return (f_syn != 0 && f_fin == 0 && f_rst == 0 ? (f_ack != 0 ? some(syn_ack) : some(syn)) :
 	//FIN packet
-	(f_fin == 1 && f_syn == 0 && f_rst == 0 ? some(fin) :
+	(f_fin != 0 && f_syn == 0 && f_rst == 0 ? (f_ack != 0 ? some(fin_ack) : some(fin)) :
 	//RST packet
-	(f_rst == 1 && f_syn == 0 && f_fin == 0 ? some(rst) :
+	(f_rst != 0 && f_syn == 0 && f_fin == 0 ? (f_ack != 0 ? some(rst_ack) : some(rst)) :
 	//ACK packet
-	(f_ack == 1 && f_syn == 0 && f_fin == 0 && f_rst == 0 ? some(ack) : none))));
+	(f_ack != 0 && f_syn == 0 && f_fin == 0 && f_rst == 0 ? some(ack) : none))));
 }
 
 //TCP pointers we need
