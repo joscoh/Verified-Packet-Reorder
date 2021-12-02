@@ -41,16 +41,11 @@ fixpoint list<pair<int, T> > insert<T>(int x, T t, list<pair<int, T> > l) {
 	}
 }
 
-//Need a notion of inrange for these tuple lists
-fixpoint bool inrange_tup<T>(pair<int, T> p) {
-	return inrange(fst(p));
-}
-
 /* Lemmas about Sorting */
 
 // insert preserves sortedness
 lemma void insert_sorted<T>(int x, T t, list<pair<int, T> > l) 
-requires sorted(l) == true && forall(l, inrange_tup) && inrange(x) == true;
+requires sorted(l) == true && forall(map(fst, l), inrange) && inrange(x) == true;
 ensures sorted(insert(x, t, l)) == true;
 {
 	switch(l) {
@@ -72,7 +67,7 @@ ensures sorted(insert(x, t, l)) == true;
 						}
 					}
 					else {
-						forall_mem(p, l, inrange_tup);
+						forall_mem(h, map(fst, l), inrange);
 						cmp_antisym2(h, x);
 						switch(tl) {
 							case nil:
@@ -171,15 +166,15 @@ fixpoint bool ub<T>(int x, list<pair<int, T> > l) {
     
 //If have a list upper bounded by x, and we insert y > x, then y is added to the end of the list
 lemma void insert_end<T>(list<pair<int, T> > l, int bound, int y, T t)
-requires ub(bound, l) && inrange(bound) && inrange(y) && forall(l, inrange_tup) && cmp(y, bound) >= 0;
+requires ub(bound, l) && inrange(bound) && inrange(y) && forall(map(fst, l), inrange) && cmp(y, bound) >= 0;
 ensures insert(y, t, l) == append(l, cons(pair(y, t), nil));
 {
 	switch(l) {
 		case nil:
 		case cons(p, tl):
-			forall_mem(p, l, inrange_tup);
 			switch(p) {
 				case pair(h, t'):
+					forall_mem(h, map(fst, l), inrange);
 					cmp_ge_trans(y, bound, h);
 					if(cmp(y, h) == 0) {
 						cmp_inj(y, h);
@@ -195,7 +190,7 @@ ensures insert(y, t, l) == append(l, cons(pair(y, t), nil));
 //If l1 is upper bounded by x, and we insert y>x into l1 ++ l2, then we can just ignore l1
 
 lemma void insert_app<T>(list<pair<int, T> > l1, list<pair<int, T> > l2, int bound, int y, T t)
-requires ub(bound, l1) && inrange(bound) && inrange(y) && forall(l1, inrange_tup) && cmp(bound, y) <= 0;
+requires ub(bound, l1) && inrange(bound) && inrange(y) && forall(map(fst, l1), inrange) && cmp(bound, y) <= 0;
 ensures insert(y, t, append(l1, l2)) == append(l1, insert(y, t, l2));
 {
 	switch(l1) {
@@ -203,7 +198,7 @@ ensures insert(y, t, append(l1, l2)) == append(l1, insert(y, t, l2));
 		case cons(p, tl):
 			switch(p) {
 				case pair(h, t'):
-					forall_mem(p, l1, inrange_tup);
+					forall_mem(h, map(fst, l1), inrange);
 					if(cmp(bound, y) == 0) {
 						cmp_inj(bound, y);
 						if(cmp(y, h) == 0) {
