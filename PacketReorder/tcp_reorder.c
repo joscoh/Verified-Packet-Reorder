@@ -174,7 +174,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
  //JOSH - changed to int to reflect error state - malloc not working
 static int insert_packet(tcp_packet_list_t *ord, void *packet, 
 		uint32_t seq, uint32_t plen, double ts, tcp_reorder_t type)
-//@requires tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& data_present(packet) &*& inrange(seq) == true &*& !mem(seq, l);
+//@requires tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& data_present(packet) &*& inrange(seq) == true;
 /*@ ensures result == 0 ? 
 	tcp_packet_list_tp(ord, l, exp_seq) &*& data_present(packet)
 	: tcp_packet_list_tp(ord, insert(seq, l), exp_seq); @*/
@@ -270,7 +270,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	 	append(l1, l2) == l &*& 
 		prev == 0 && it != 0 ? start == it && it_seq == start_seq
 		 : it == 0 ? prev == end && prev_seq == end_seq && cmp(end_seq, seq) < 0
-		 : cmp(prev_seq, seq) < 0; @*/
+		 : cmp(prev_seq, seq) <= 0; @*/
 	// This invariant is quite complicated. The first case is the start, the second is the (trivial) end, and the third case is interesting. It says we can split up l into
 	// l1 and l2, where seq is larger than the largest value in l1 (so we should insert in l2)
 	      {
@@ -463,7 +463,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
  */
 tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord, 
 	libtrace_packet_t *packet)
-//@ requires valid_packet(packet, ?seqnum, ?plength, ?ty) &*& tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& inrange(seqnum) == true &*& !mem(seqnum, l);
+//@ requires valid_packet(packet, ?seqnum, ?plength, ?ty) &*& tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& inrange(seqnum) == true;
 /*@ ensures valid_packet(packet, seqnum, plength, ty) &*&
 	result == effect_to_reorder_t(r_ignore) ?
 		(get_reorder_effect(ty, plength, seqnum, exp_seq) == r_syn

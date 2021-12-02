@@ -10,12 +10,13 @@
 
 // We want to say that the list (of sequence numbers) is (strongly) sorted. We define a sorted predicate and a function to insert into a sorted list. These are standard.
 
+
 fixpoint bool sorted(list<int> l) {
 	switch(l) {
 		case nil: return true;
 		case cons(h, t): return switch(t) {
 					case nil: return true;
-					case cons(h', t'): return cmp(h', h) > 0 && sorted(t);
+					case cons(h', t'): return cmp(h', h) >= 0 && sorted(t);
 				};
 	}
 }
@@ -31,7 +32,7 @@ fixpoint list<int> insert(int x, list<int> l) {
 
 // insert preserves sortedness
 lemma void insert_sorted(int x, list<int> l) 
-requires sorted(l) == true && forall(l, inrange) && !mem(x, l) && inrange(x) == true;
+requires sorted(l) == true && forall(l, inrange) && inrange(x) == true;
 ensures sorted(insert(x, l)) == true;
 {
 	switch(l) {
@@ -40,6 +41,11 @@ ensures sorted(insert(x, l)) == true;
 			if(cmp(h, x) > 0) {}
 			else if(cmp(h, x) == 0) { 
 				cmp_inj(h, x);
+				switch(t) {
+					case nil:
+					case cons(h', t'):
+						insert_sorted(x, t);
+				}
 			}
 			else {
 				forall_mem(h, l, inrange);
@@ -146,17 +152,29 @@ ensures insert(y, l) == append(l, cons(y, nil));
 //If l1 is upper bounded by x, and we insert y>x into l1 ++ l2, then we can just ignore l1
 
 lemma void insert_app(list<int> l1, list<int> l2, int bound, int y)
-requires ub(bound, l1) && inrange(bound) && inrange(y) && forall(l1, inrange) && cmp(bound, y) < 0;
+requires ub(bound, l1) && inrange(bound) && inrange(y) && forall(l1, inrange) && cmp(bound, y) <= 0;
 ensures insert(y, append(l1, l2)) == append(l1, insert(y, l2));
 {
 	switch(l1) {
 		case nil: 
 		case cons(h, t):
 			forall_mem(h, l1, inrange);
-			cmp_antisym2(bound, y);
-			cmp_gt_ge_trans(y, bound, h);
+			if(cmp(bound, y) == 0) {
+				cmp_inj(bound, y);
+				if(cmp(y, h) == 0) {
+					cmp_inj(y, h);
+				}
+				if(cmp(y, h) > 0) {
+					cmp_antisym1(y, h);
+				}
+			}
+			else {
+				cmp_antisym2(bound, y); //y > bound
+				cmp_gt_ge_trans(y, bound, h); // so y > h
+				cmp_antisym1(y, h); // so h < y
+			}
 			insert_app(t, l2, bound, y);
-			cmp_antisym1(y, h);
+			
 	}	
 }
 
