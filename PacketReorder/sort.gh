@@ -10,93 +10,138 @@
 
 // We want to say that the list (of sequence numbers) is (strongly) sorted. We define a sorted predicate and a function to insert into a sorted list. These are standard.
 
+//It is a bit more complicated in our case, because we want a list of (int, tcp_reorder_effect) pairs. Ideally, we would be able to define a generic sorting function and prove the lemmas,
+//but that would require dependent types (to express that our comparison function is valid) or a module system, neither of which Verifast supports. So we do everything concretely
+//in terms of tuples, which makes the definitions much uglier. We have to constantly pattern match in the lemmas because Verifast will not destruct tuples automatically, and doesn't
+//allow nested pattern matching. Ugh.
 
-fixpoint bool sorted(list<int> l) {
+fixpoint bool sorted<T>(list<pair<int, T> > l) {
 	switch(l) {
 		case nil: return true;
-		case cons(h, t): return switch(t) {
+		case cons(p, t): return switch(t) {
 					case nil: return true;
-					case cons(h', t'): return cmp(h', h) >= 0 && sorted(t);
+					case cons(p', t'): return 
+						switch(p) {
+							case pair(h, x): return
+								switch(p') {
+									case pair(h', x'): return cmp(h', h) >= 0 && sorted(t);
+								};
+						}; 
 				};
 	}
 }
     
-fixpoint list<int> insert(int x, list<int> l) {
+fixpoint list<pair<int, T> > insert<T>(int x, T t, list<pair<int, T> > l) {
 	switch(l) {
-		case nil: return cons(x, nil);
-		case cons(h, t): return cmp(h, x) > 0 ? cons(x, l) : cons(h, insert(x, t));
+		case nil: return cons(pair(x, t), nil);
+		case cons(p, tl): return
+			switch(p) {
+				case pair(h, y): return cmp(h, x) > 0 ? cons(pair(x, t), l) : cons(p, insert(x, t, tl));
+			}; 
 	}
+}
+
+//Need a notion of inrange for these tuple lists
+fixpoint bool inrange_tup<T>(pair<int, T> p) {
+	return inrange(fst(p));
 }
 
 /* Lemmas about Sorting */
 
 // insert preserves sortedness
-lemma void insert_sorted(int x, list<int> l) 
-requires sorted(l) == true && forall(l, inrange) && inrange(x) == true;
-ensures sorted(insert(x, l)) == true;
+lemma void insert_sorted<T>(int x, T t, list<pair<int, T> > l) 
+requires sorted(l) == true && forall(l, inrange_tup) && inrange(x) == true;
+ensures sorted(insert(x, t, l)) == true;
 {
 	switch(l) {
 		case nil:
-		case cons(h, t): 
-			if(cmp(h, x) > 0) {}
-			else if(cmp(h, x) == 0) { 
-				cmp_inj(h, x);
-				switch(t) {
-					case nil:
-					case cons(h', t'):
-						insert_sorted(x, t);
-				}
-			}
-			else {
-				forall_mem(h, l, inrange);
-				cmp_antisym2(h, x);
-				switch(t) {
-					case nil:
-					case cons(h', t'):
-						insert_sorted(x, t);
-				}
+		case cons(p, tl): 
+			switch(p) {
+				case pair(h, y):
+					if(cmp(h, x) > 0) {}
+					else if(cmp(h, x) == 0) { 
+						cmp_inj(h, x);
+						switch(tl) {
+							case nil:
+							case cons(p', tl'):
+								switch(p') {
+									case pair(h', y'): {
+										insert_sorted(x, t, tl);
+									}
+								}
+						}
+					}
+					else {
+						forall_mem(p, l, inrange_tup);
+						cmp_antisym2(h, x);
+						switch(tl) {
+							case nil:
+							case cons(p', tl'):
+								switch(p') {
+									case pair(h', y'): {
+										insert_sorted(x, t, tl);
+									}
+								}
+						}
+					}
 			}
 	}
 }
     
 //If (l1 ++ l2) is sorted, then l1 is sorted and l2 is sorted
 
-lemma void sorted_app1(list<int> l1, list<int> l2)
+lemma void sorted_app1<T>(list<pair<int, T> > l1, list<pair<int, T> > l2)
 requires sorted(append(l1, l2)) == true;
 ensures sorted(l1) == true;
 {
 	switch(l1) {
 		case nil:
-		case cons(h1, t1): 
-			switch(t1) {
+		case cons(p1, tl1): 
+			switch(tl1) {
 				case nil:
-				case cons(h2, t2):
-					sorted_app1(t1, l2);
+				case cons(p2, tl2):
+					switch(p1) {
+						case pair(h1, t1):
+							switch(p2) {
+								case pair(h2, t2) :	
+									sorted_app1(tl1, l2);
+							}
+					}
+					
 			}
 	}
 }
     
-lemma void sorted_app2(list<int> l1, list<int> l2)
+lemma void sorted_app2<T>(list<pair<int, T> > l1, list<pair<int, T> > l2)
 requires sorted(append(l1, l2)) == true;
 ensures sorted(l2) == true;
 {
 	switch(l1) {
 		case nil:
-		case cons(h1, t1): 
-			switch(t1) {
-				case nil:
-					switch(l2) {
-						case nil:
-						case cons(h2, t2):
-					}
-				case cons(h2, t2):
-					sorted_app2(t1, l2);
+		case cons(p1, tl1): 
+			switch(p1) {
+				case pair(h1, t1):
+					switch(tl1) {
+					case nil:
+						switch(l2) {
+							case nil:
+							case cons(p2, tl2):
+								switch(p2) {
+									case pair(h2, t2):
+								}
+						}
+					case cons(p2, tl2):
+						switch(p2) {
+							case pair(h2, t2):
+								sorted_app2(tl1, l2);
+						}
+				}
 			}
 	}
 }
     
 //A special case of sorted_app2 that is useful:
-lemma void sorted_tail(list<int> l)
+lemma void sorted_tail<T>(list<pair<int, T> > l)
 requires sorted(l) == true;
 ensures sorted(tail(l)) == true;
 {
@@ -112,68 +157,69 @@ ensures sorted(tail(l)) == true;
 //We want to define the notion of upper and lower bounds on a list. We cannot use the included forall because we don't have partial application.
     
 //upper bound
-fixpoint bool ub(int x, list<int> l) {
+fixpoint bool ub<T>(int x, list<pair<int, T> > l) {
 	switch(l) {
 		case nil: return true;
-		case cons(h, t): return cmp(x, h) >= 0 && ub(x, t);
-	}
-}
-
-//lower bound
-fixpoint bool lb(int x, list<int> l) {
-	switch(l) {
-		case nil: return true;
-		case cons(h, t): return cmp(h, x) >= 0 && lb(x, t);
+		case cons(p, tl): return
+			switch(p) {
+				case pair(h, t): return cmp(x, h) >= 0 && ub(x, tl);
+			};
 	}
 }
 
 /* Results about Sorting and Bounds */
     
 //If have a list upper bounded by x, and we insert y > x, then y is added to the end of the list
-lemma void insert_end(list<int> l, int bound, int y)
-requires ub(bound, l) && inrange(bound) && inrange(y) && forall(l, inrange) && cmp(y, bound) >= 0;
-ensures insert(y, l) == append(l, cons(y, nil));
+lemma void insert_end<T>(list<pair<int, T> > l, int bound, int y, T t)
+requires ub(bound, l) && inrange(bound) && inrange(y) && forall(l, inrange_tup) && cmp(y, bound) >= 0;
+ensures insert(y, t, l) == append(l, cons(pair(y, t), nil));
 {
 	switch(l) {
 		case nil:
-		case cons(h, t):
-			forall_mem(h, l, inrange);
-			cmp_ge_trans(y, bound, h);
-			if(cmp(y, h) == 0) {
-				cmp_inj(y, h);
+		case cons(p, tl):
+			forall_mem(p, l, inrange_tup);
+			switch(p) {
+				case pair(h, t'):
+					cmp_ge_trans(y, bound, h);
+					if(cmp(y, h) == 0) {
+						cmp_inj(y, h);
+					}
+					else {
+						cmp_antisym1(y, h);
+					}
+					insert_end(tl, bound, y, t);
 			}
-			else {
-				cmp_antisym1(y, h);
-			}
-			insert_end(t, bound, y);
 	}
 }
 
 //If l1 is upper bounded by x, and we insert y>x into l1 ++ l2, then we can just ignore l1
 
-lemma void insert_app(list<int> l1, list<int> l2, int bound, int y)
-requires ub(bound, l1) && inrange(bound) && inrange(y) && forall(l1, inrange) && cmp(bound, y) <= 0;
-ensures insert(y, append(l1, l2)) == append(l1, insert(y, l2));
+lemma void insert_app<T>(list<pair<int, T> > l1, list<pair<int, T> > l2, int bound, int y, T t)
+requires ub(bound, l1) && inrange(bound) && inrange(y) && forall(l1, inrange_tup) && cmp(bound, y) <= 0;
+ensures insert(y, t, append(l1, l2)) == append(l1, insert(y, t, l2));
 {
 	switch(l1) {
 		case nil: 
-		case cons(h, t):
-			forall_mem(h, l1, inrange);
-			if(cmp(bound, y) == 0) {
-				cmp_inj(bound, y);
-				if(cmp(y, h) == 0) {
-					cmp_inj(y, h);
-				}
-				if(cmp(y, h) > 0) {
-					cmp_antisym1(y, h);
-				}
+		case cons(p, tl):
+			switch(p) {
+				case pair(h, t'):
+					forall_mem(p, l1, inrange_tup);
+					if(cmp(bound, y) == 0) {
+						cmp_inj(bound, y);
+						if(cmp(y, h) == 0) {
+							cmp_inj(y, h);
+						}
+						if(cmp(y, h) > 0) {
+							cmp_antisym1(y, h);
+						}
+					}
+					else {
+						cmp_antisym2(bound, y); //y > bound
+						cmp_gt_ge_trans(y, bound, h); // so y > h
+						cmp_antisym1(y, h); // so h < y
+					}
+					insert_app(tl, l2, bound, y, t);
 			}
-			else {
-				cmp_antisym2(bound, y); //y > bound
-				cmp_gt_ge_trans(y, bound, h); // so y > h
-				cmp_antisym1(y, h); // so h < y
-			}
-			insert_app(t, l2, bound, y);
 			
 	}	
 }
