@@ -318,16 +318,6 @@ typedef struct libtrace_ip
     struct in_addr ip_dst;		/**< Destination Address */
 } PACKED libtrace_ip_t;
 
-/*@
-
-// For our purpose, we only care about the IP length fields. We need to know ultimately that the total length (ip_len) is at least as large as the ip header length + tcp header length
-
-//Takes in head_len and len in bytes (NOT 32 bit words)
-predicate libtrace_ip_p(libtrace_ip_t *ip, int head_len, int len) =
-	ip != 0 &*& ip->ip_hl |-> ?head &*& 4 * head == head_len &*& ip->ip_len |-> ?ip_len &*& ntohs(ip_len) == len &*& 0 <= len &*& len <= UINT16_MAX;
-
-@*/
-
 /** Generic TCP header structure */
 typedef struct libtrace_tcp
   {
@@ -367,8 +357,64 @@ typedef struct libtrace_tcp
     uint16_t urg_ptr;		/**< Urgent Pointer */
 } PACKED libtrace_tcp_t;
 
+/*
+	Handling IP and TCP Structures
+	
+	In libtrace, we have a packet structure along with functions trace_get_ip(packet) and trace_get_tcp(packet). These return libtrace_ip_t and libtrace_tcp_t structs, respectively.
+	However, we cannot just declare some predicate on IP/TCP structs and assume that the trace_get_x functions return such a struct, because these functions DO NOT allocate any
+	new memory. Instead, the IP and TCP structs are pointers into the parts of the packets that contain the headers. In essence, these functions give pointers with nicer names
+	to work with, rather than manually doing the pointer arithmetic.
+	
+	For us, since we don't want to verify these (complicated) functions in libtrace (and because we modified the structs, removing bitfields, so that the 
+	desired relationships no longer hold) we need a way to specify that the IP and TCP structs really point to portions of the packet. We CANNOT use separating conjunction (&*&)
+	because these do not refer to disjoint portions of the heap. Instead, we define (abstract) functions that return the location of various header fields based on a packet pointer.
+	We express these as fixpoints to indicate that they are pure and do not affect the head. Thus, it really must be some sort of pointer arithmetic.
+	
+	Then, we have two sets of predicates for each protocol. The first is meant to indicate that a packet is a valid TCP or IP packet, and it says
+	that the above functions, when dereferenced, give the appropriate value (ex: IP header length). The second relates the packet with the corresponding struct (IP or TCP)
+	and says that dereferencing a field in the struct is equivalent to dereferencing the appropriate offset function on the packet.
+	
+	We believe that this is a good model/simplification for what libtrace is doing, and we do not introduce any extraneous heap chunks or predicates.
+
+*/
+
+// IP Predicates and Libtrace Function
+
 /*@
 
+//IP pointers we need
+fixpoint uint16_t *ip_len_ptr(libtrace_packet_t *packet);
+fixpoint unsigned int *ip_head_len_ptr(libtrace_packet_t *packet);
+
+// For our purpose, we only care about the IP length fields. We need to know ultimately that the total length (ip_len) is at least as large as the ip header length + tcp header length
+// Takes in head_len and len in bytes (NOT 32 bit words)
+predicate valid_ip_packet(libtrace_packet_t *packet, int head_len, int len) = 
+	*(ip_len_ptr(packet)) |-> ?ip_len &*& ntohs(ip_len) == len &*& *(ip_head_len_ptr(packet)) |-> ?head &*& 4 * head == head_len &*& 0 <= len &*& len <= UINT16_MAX;
+	
+//Then, a libtrace_ip_t struct is well-formed if its length fields point to the same values as the functions above (so there is no new allocation). NOTE: NO use of &*&!
+predicate libtrace_ip_p(libtrace_packet_t *packet, libtrace_ip_t *ip, int head_len, int len) =
+	ip != 0 && &(ip->ip_hl) == ip_head_len_ptr(packet)  && &(ip->ip_len) == ip_len_ptr(packet);
+	
+@*/
+
+/** Get a pointer to the IPv4 header (if any) for a given packet
+ * @param packet  	The packet to get the IPv4 header for
+ *
+ * @return A pointer to the IPv4 header, or NULL if there is no IPv4 header
+ *
+ * If a partial IP header is present, i.e. the packet has been truncated before
+ * the end of the IP header, this function will return NULL.
+ *
+ * You should consider using \ref trace_get_layer3 instead of this function.
+ */
+//DLLEXPORT SIMPLE_FUNCTION
+libtrace_ip_t *trace_get_ip(libtrace_packet_t *packet);
+//@ requires valid_ip_packet(packet, ?head_len, ?len);
+//@ ensures valid_ip_packet(packet, head_len, len) &*& libtrace_ip_p(packet, result, head_len, len);
+
+// TCP Predicates and Libtrace Function
+
+/*@
 //We need more information about the TCP structure, since we need to keep track of the header length, sequence number, and packet type
 
 inductive tcp_type = syn | ack | fin | rst;
@@ -385,48 +431,90 @@ fixpoint option<tcp_type> tcp_flags_to_type (int f_ack, int f_rst, int f_syn, in
 	(f_rst == 1 && f_syn == 0 && f_fin == 0 ? some(rst) :
 	//ACK packet
 	(f_ack == 1 && f_syn == 0 && f_fin == 0 && f_rst == 0 ? some(ack) : none))));
-}	
+}
 
-//NOTE: We need to differentiate between syn-ack, fin-ack, and ack packets, since ack packets do not increase the sequence number, while the others do
+//TCP pointers we need
+fixpoint unsigned int *tcp_head_len_ptr(libtrace_packet_t *packet);
+fixpoint uint32_t *tcp_seq_ptr(libtrace_packet_t *packet);
+fixpoint unsigned int *tcp_syn_ptr(libtrace_packet_t *packet);	
+fixpoint unsigned int *tcp_ack_ptr(libtrace_packet_t *packet);	
+fixpoint unsigned int *tcp_fin_ptr(libtrace_packet_t *packet);	
+fixpoint unsigned int *tcp_rst_ptr(libtrace_packet_t *packet);	
+
+// This is similar to the valid IP packet predicate
+predicate valid_tcp_packet(libtrace_packet_t *packet, int seq, int head_len, tcp_type ty) = 
+	*(tcp_head_len_ptr(packet)) |-> ?len &*& 4 * len == head_len &*&
+	*(tcp_seq_ptr(packet)) |-> ?seq_net &*& ntohl(seq_net) == seq &*& 0 <= seq &*& seq <= UINT32_MAX &*&
+	*(tcp_syn_ptr(packet)) |-> ?syn &*&
+	*(tcp_ack_ptr(packet)) |-> ?ack &*&
+	*(tcp_fin_ptr(packet)) |-> ?fin &*&
+	*(tcp_rst_ptr(packet)) |-> ?rst &*&
+	tcp_flags_to_type(ack, rst, syn, fin) == some(ty);
+	
+//Now we need the predicate that the TCP struct is well-formed. Again, there is no allocation
+predicate libtrace_tcp_p (libtrace_packet_t *packet, libtrace_tcp_t *tcp, int seq, int head_len, tcp_type ty) =
+	tcp != 0 && 
+	&(tcp->doff) == tcp_head_len_ptr(packet) &&
+	&(tcp->seq) == tcp_seq_ptr(packet) &&
+	&(tcp->syn) == tcp_syn_ptr(packet) &&
+	&(tcp->ack) == tcp_ack_ptr(packet) &&
+	&(tcp->fin) == tcp_fin_ptr(packet) &&
+	&(tcp->rst) == tcp_rst_ptr(packet);
+	
 
 
-//TODO: handle ntohl and htons via axiomatizing
+
+@*/
+
+/*
+predicate libtrace_ip_p(libtrace_packet_t *packet, libtrace_ip_t *ip, int head_len, int len) =
+	
+	ip != 0 && &(ip->ip_hl) == ip_head_len_ptr(packet)  && &(ip->ip_len) == ip_len_ptr(packet);
+
+
+
+
 
 predicate libtrace_tcp_p (libtrace_tcp_t *tcp, int seq, int head_len, tcp_type ty) =
 	tcp != 0 &*& tcp->doff |-> ?len &*& 4 * len == head_len &*& tcp->syn |-> ?syn &*& tcp->ack |-> ?ack &*& tcp->fin |-> ?fin &*& tcp->rst |-> ?rst &*&
 	tcp->seq |-> ?seq_net &*& ntohl(seq_net) == seq &*& 0 <= seq &*& seq <= UINT32_MAX &*&
 	tcp_flags_to_type(ack, rst, syn, fin) == some(ty);
-
-@*/
+	*/
 
 /*@
-//Next, we need to deal with the trace_get_ip and trace_get_tcp functions. We need to know that these correspond to some (abstract) functions, which we can then use
-//for a general predicate about well-formed TCP/IP libtrace packets. First, we need an abstract notion of a packet that is a valid IP packet
-//TODO: do we need the lengths/seq/flags here?
+//We need to deal with the trace_get_ip and trace_get_tcp functions. We need to know that these correspond to some (abstract) functions, which we can then use
+//for a general predicate about well-formed TCP/IP libtrace packets. 
+//However, specifying the IP/TCP structs is more complicated than it seems. They are not separately allocated, but rather just pointers into the different parts of the packet
+//data that contain the different headers. So we cannot put them as separate predicates, or else we are saying they are separate heap chunks (and functions leak memory).
+//Instead, we define uninterpreted functions for the locations of the packet elements as pointers, then say that in the IP/TCP structs, the struct elements are equal to
+//these dereferenced pointers. Thus, a well-formed IP/TCP struct is only well-formed with reference to a given packet.
 
-predicate valid_ip_packet(libtrace_packet_t *packet, int head_len, int len);
+//Making these fixpoints (implicitly) assumes that we are only doing simple arithmetic to get these pointers; there is no mutation or memory allocation.
 
-predicate valid_tcp_packet(libtrace_packet_t *packet, int seq, int head_len, tcp_type ty);
+//TCP pointers we need
+
+
+//TODO: ACK, SYN, FIN, RST
+
+
+	
+//Now, we do the same thing for TCP fields
+	
+
+	
+	//ip != 0 &*& ip->ip_hl |-> ?head &*& 4 * head == head_len &*& ip->ip_len |-> ?ip_len &*& ntohs(ip_len) == len &*& 0 <= len &*& len <= UINT16_MAX;
+
+
 
 //predicate valid_tcp_ip_packet(libtrace_packet_t *packet) = valid_ip_packet(packet) && valid_tcp_packet(packet);
 
+//For the trace_get_ip and trace_get_tcp predicates, we have a problem. Libtrace builds these structs directly from the packet bytes, so that there is no additional allocated memory.
+//This is very difficult to specify without going deep into the libtrace internals, so we assume that there is simply some (other) IP and TCP structs populated with appropriate information
+
 @*/
 
 
-/** Get a pointer to the IPv4 header (if any) for a given packet
- * @param packet  	The packet to get the IPv4 header for
- *
- * @return A pointer to the IPv4 header, or NULL if there is no IPv4 header
- *
- * If a partial IP header is present, i.e. the packet has been truncated before
- * the end of the IP header, this function will return NULL.
- *
- * You should consider using \ref trace_get_layer3 instead of this function.
- */
-//DLLEXPORT SIMPLE_FUNCTION
-libtrace_ip_t *trace_get_ip(libtrace_packet_t *packet);
-//@ requires valid_ip_packet(packet, ?head_len, ?len);
-//@ ensures libtrace_ip_p(result, head_len, len);
+
 
 
 
@@ -446,7 +534,7 @@ libtrace_ip_t *trace_get_ip(libtrace_packet_t *packet);
 //DLLEXPORT SIMPLE_FUNCTION
 libtrace_tcp_t *trace_get_tcp(libtrace_packet_t *packet);
 //@ requires valid_tcp_packet(packet, ?seq, ?head_len, ?ty);
-//@ ensures libtrace_tcp_p(result, seq, head_len, ty);
+//@ ensures result != 0 &*& valid_tcp_packet(packet, seq, head_len, ty) &*& libtrace_tcp_p(packet, result, seq, head_len, ty);
 
 /*@
 //Valid Libtrace IP/TCP Packets
@@ -456,3 +544,8 @@ predicate valid_packet(libtrace_packet_t *packet, int seq, int plen, tcp_type ty
 	valid_tcp_packet(packet, seq, ?tcp_head_len, ty) &*& valid_ip_packet(packet, ?ip_head_len, ?ip_len) &*& plen == ip_len - ip_head_len - tcp_head_len &*&
 	0 <= plen;
 	@*/
+	
+//We don't need to know anything about this function:
+double trace_get_seconds(const libtrace_packet_t *packet);
+//@requires true;
+//@ensures true;

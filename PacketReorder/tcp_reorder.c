@@ -463,11 +463,13 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
  */
 tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord, 
 	libtrace_packet_t *packet)
-//@ requires valid_packet(packet, ?seq, ?plen, ?ty) &*& tcp_packet_list_tp(ord, ?l, ?exp_seq)
-/*@ ensures result == get_reorder_effect(ty, plen, seq, exp_seq) &*& valid_packet(packet, seq, plen, ty) &*&
-	result == r_ignore ? tcp_packet_list_tp(ord, l, exp_seq) :
-	result == r_syn ? tcp_packet_list_tp(ord, insert(seq, l), seq) :
-	tcp_packet_list_tp(ord, insert(seq, l), exp_seq)
+//@ requires valid_packet(packet, ?seqnum, ?plength, ?ty) &*& tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& inrange(seqnum) == true;
+/*@ ensures valid_packet(packet, seqnum, plength, ty) &*& data_present(?data) &*&
+	result == effect_to_reorder_t(r_ignore) ?
+		(get_reorder_effect(ty, plength, seqnum, exp_seq) == r_syn ? tcp_packet_list_tp(ord, l, seqnum) : tcp_packet_list_tp(ord, l, exp_seq)) :
+	result == effect_to_reorder_t(get_reorder_effect(ty, plength, seqnum, exp_seq)) &*&
+	result == effect_to_reorder_t(r_syn) ? tcp_packet_list_tp(ord, insert(seqnum, l), seqnum) :
+	tcp_packet_list_tp(ord, insert(seqnum, l), exp_seq);
 @*/
 {
 	libtrace_ip_t *ip;
@@ -477,6 +479,8 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	uint32_t plen;
 	double pkt_ts;
 	tcp_reorder_t type;
+	
+	//@open valid_packet(packet, seqnum, plength, ty);
 
 	ip = trace_get_ip(packet);
 	tcp = trace_get_tcp(packet);
@@ -484,16 +488,27 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	/* Non-TCP packets cannot be reordered */
 	if (tcp == NULL)
 		return TCP_REORDER_IGNORE;
+		
+	//@open libtrace_tcp_p(packet, tcp, seqnum, ?tcp_head_len, ty);
+	//@open libtrace_ip_p(packet, ip, ?ip_head_len, ?ip_len);
+	//@open valid_ip_packet(packet, ip_head_len, ip_len);
+	//@open valid_tcp_packet(packet, seqnum, tcp_head_len, ty);
 
 	seq = ntohl(tcp->seq);
-	plen = (htons(ip->ip_len) - (ip->ip_hl * 4) - (tcp->doff * 4));
+	//JOSH - need to insert casts to make Verifast happy (this won't overflow because of packet specs, but Verifast doesn't check that yet)
+	plen = ((uint32_t) (htons(ip->ip_len)) - ((uint32_t) (ip->ip_hl * 4)) - ((uint32_t) (tcp->doff * 4)));
 	//JOSH - no idea why they use htons here - should be ntohs since we want plen to be in host byte order. But for all real purposes (eg: Linux), htons and ntohs are the same function,
 	//so this is OK. Even in the paper about libtrace, they use ntohs(ip->ip_len) in their example, so I think this is a mistake.
 	pkt_ts = trace_get_seconds(packet);
 
 	/* Pass the packet off to the read callback to extract the appropriate
 	 * packet data */
-	packet_data = ord->read_packet(ord->expected_seq, packet);
+	 //JOSH - Verifast doesn't like this in one line; we need to split it up
+	//@open tcp_packet_list_tp(ord, l, exp_seq);
+	//@open tcp_packet_list_wf(ord, ?end, length(l), exp_seq);
+	read_packet_callback *rp = ord->read_packet;
+	packet_data = rp(ord->expected_seq, packet);
+	//packet_data = ord->read_packet(ord->expected_seq, packet);
 	
 	/* No packet data? Ignore */
 	if (packet_data == NULL)
@@ -519,12 +534,28 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	
 	else
 		type = TCP_REORDER_DATA;
+		
+	/*@
+	if(tcp->syn) {
+		close tcp_packet_list_wf(ord, end, length(l), seq);
+		close tcp_packet_list_tp(ord, l, seq);
+	} 
+	else {
+		close tcp_packet_list_wf(ord, end, length(l), exp_seq);
+		close tcp_packet_list_tp(ord, l, exp_seq);
+	} 
+	@*/
 	
 
 	/* Now actually push it on to the list */
-	insert_packet(ord, packet_data, seq, plen, pkt_ts, type);
+	//JOSH - handle failure case
+	int res = insert_packet(ord, packet_data, seq, plen, pkt_ts, type);
+	if (res == 0) type = TCP_REORDER_IGNORE;
+	//@ close valid_ip_packet(packet, ip_head_len, ip_len);
+	//@ close valid_tcp_packet(packet, seqnum, tcp_head_len, ty);
+	//@ close valid_packet(packet, seqnum, plength, ty);
 	return type;
-
+	//@assume(false);
 
 }
 

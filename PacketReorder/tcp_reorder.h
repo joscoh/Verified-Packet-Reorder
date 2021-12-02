@@ -40,8 +40,6 @@
 extern "C" {
 #endif
 
-///*@ inductive tcp_type = ignore | syn | ack | fin | rst | data | retransmit; @*/
-
 /* Used to distinguish between different TCP events */
 typedef enum {
 	/* Not a valid TCP packet - do not attempt to reorder */
@@ -65,19 +63,6 @@ typedef enum {
 	/* Retransmitted TCP packet */
 	TCP_REORDER_RETRANSMIT
 } tcp_reorder_t;
-/*
-/*@ predicate tcp_reorder_tp(tcp_reorder_t o, tcp_type t) =
-	switch(t) {
-	  case ignore : return o == TCP_REORDER_IGNORE;
-	  case syn : return o == TCP_REORDER_SYN;
-	  case ack : return o == TCP_REORDER_ACK;
-	  case fin : return o == TCP_REORDER_FIN;
-	  case rst : return o == TCP_REORDER_RST;
-	  case data : return o == TCP_REORDER_DATA;
-	  case retransmit : return o == TCP_REORDER_RETRANSMIT;
-	};
-  @
-*/
 
 /* An entry in the reordering list for a TCP packet */
 typedef struct tcp_pkt {
@@ -110,9 +95,10 @@ predicate data_present(void *data);
 
 @*/
 //Verifast will not parse inline definition
+//NOTE: we require that result != 0 (or else the TCP reorderer will ignore the packet). This is not strictly necessary; it's just a trivial case and it simplifies the specs.
 typedef void *read_packet_callback(uint32_t exp, libtrace_packet_t *packet);
 //@ requires inrange(exp) == true;
-//@ ensures data_present(result);
+//@ ensures result != 0 &*& data_present(result);
 
 typedef void destroy_packet_callback(void *data);
 //@ requires data_present(data);
@@ -211,6 +197,7 @@ typedef struct tcp_reorder {
       		reorder->expected_seq |-> exp_seq &*& reorder->list_len |-> length &*& reorder->read_packet |-> ?rp &*& reorder->destroy_packet |-> ?dp &*&
       		is_read_packet_callback(rp) == true &*& 
       		dp != 0 &*& is_destroy_packet_callback(dp) == true &*&
+      		inrange(exp_seq) == true &*&
       		reorder->list_end |-> end;
 		
 	//We don't need to expose start and end; we only care about the contents and the expected sequence number
@@ -666,6 +653,21 @@ sequence number based on the TCP semantics. The following type describes these e
 */
 
 inductive tcp_reorder_effect = r_ignore | r_syn | r_ack | r_fin | r_rst | r_data | r_retransmit;
+
+//Relate this effect to the enum
+
+fixpoint tcp_reorder_t effect_to_reorder_t (tcp_reorder_effect eff) {
+	switch(eff) {
+		case r_ignore: return TCP_REORDER_IGNORE;
+		case r_syn: return TCP_REORDER_SYN;
+		case r_ack: return TCP_REORDER_ACK;
+		case r_fin: return TCP_REORDER_FIN;
+		case r_rst: return TCP_REORDER_RST;
+		case r_data: return TCP_REORDER_DATA;
+		case r_retransmit: return TCP_REORDER_RETRANSMIT;
+	}
+}
+
 
 /*
 How do we know what packet should trigger which effect?
