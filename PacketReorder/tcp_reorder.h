@@ -146,28 +146,30 @@ start->seq |-> seq &*& inrange(seq) == true;
 
 // This is the natural way to express a linked list with start and end pointers. It is useful for getting information about the start node, but not the end node.
 //TODO: HERE
-predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq) =
-tcp_packet_single(start, seq, ?eff) &*& start->next |-> ?next &*&
+predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, tcp_reorder_effect eff) =
+tcp_packet_single(start, seq, eff) &*& start->next |-> ?next &*&
 // sortedness/contents
 sorted(contents) == true &*& contents == cons(pair(seq, eff), ?tl) &*&
 // predicate recursively holds - only handle seq and next in recursive case because we handle end separately
-(start == end ? tl == nil && next == end_next: next != 0 &*& tcp_packet_partial(next, end, end_next, tl, ?seq1));
+(start == end ? tl == nil && next == end_next: next != 0 &*& tcp_packet_partial(next, end, end_next, tl, ?seq1, ?eff1));
 
 //Alternatively, in most cases, we instead need to access the end packet (and crucially, sequence number). We define an alternate partial predicate and then prove equivalence in partial.gh:
 
-predicate tcp_packet_partial_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq) =
-tcp_packet_single(end, end_seq, ?eff) &*& end != 0 &*& end->next |-> end_next &*& sorted(contents) == true &*&
-(start == end ? contents == cons(pair(end_seq, eff), nil) && seq == end_seq
-: contents != nil &*& tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq) &*& drop(length(contents) - 1, contents) == cons(pair(end_seq, eff), nil)); 
+predicate tcp_packet_partial_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, 
+	tcp_reorder_effect eff, int end_seq, tcp_reorder_effect end_eff) =
+tcp_packet_single(end, end_seq, end_eff) &*& end != 0 &*& end->next |-> end_next &*& sorted(contents) == true &*&
+(start == end ? contents == cons(pair(end_seq, end_eff), nil) && seq == end_seq && eff == end_eff
+: contents != nil &*& tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq, eff) &*& drop(length(contents) - 1, contents) == cons(pair(end_seq, end_eff), nil)); 
 
 //Due to a Verifast limitation (related to when we can use patterns), we want a more general predicate that allows us to describe an empty list:
-predicate tcp_packet_partial_end_gen(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq) =
-	start != 0 && end != 0 ? tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) : contents == nil; 
+predicate tcp_packet_partial_end_gen(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, 
+	tcp_reorder_effect eff, int end_seq, tcp_reorder_effect end_eff) =
+	start != 0 && end != 0 ? tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) : contents == nil; 
 	
 //The overall predicate just says that additionally, the last packet points to NULL
 
 predicate tcp_packet_full(tcp_packet_t *start, tcp_packet_t *end, list<pair<int, tcp_reorder_effect> > contents, int seq) =
-	end != 0 &*& tcp_packet_partial(start, end, 0, contents, seq);
+	end != 0 &*& tcp_packet_partial(start, end, 0, contents, seq, ?eff);
 
 @*/
 
@@ -282,30 +284,30 @@ tcp_packet_t *tcp_pop_packet(tcp_packet_list_t *ord);
 
 // The start node is non-null in any partial list
 lemma void partial_start_nonzero(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq)
-requires tcp_packet_partial(start, end, end_next, contents, seq);
-ensures tcp_packet_partial(start, end, end_next, contents, seq) &*& start != 0;
+requires tcp_packet_partial(start, end, end_next, contents, seq, ?eff);
+ensures tcp_packet_partial(start, end, end_next, contents, seq, eff) &*& start != 0;
 {
-	open tcp_packet_partial(start, end, end_next, contents, seq);
-	open tcp_packet_single(start, seq, ?eff);
+	open tcp_packet_partial(start, end, end_next, contents, seq, eff);
+	open tcp_packet_single(start, seq, eff);
 	close tcp_packet_single(start, seq, eff);
-	close tcp_packet_partial(start, end, end_next, contents, seq);
+	close tcp_packet_partial(start, end, end_next, contents, seq, eff);
 }
 
 // The first item in contents is seq, and contents is non-null
 lemma void partial_end_contents_head(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& head(contents) == pair(seq, _) &*& contents != nil;
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& head(contents) == pair(seq, eff) &*& contents != nil;
 {
 	
-	open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	if(start == end) {}
 	else {
-		open tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq);
+		open tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq, eff);
 		length_pos(contents);
 		head_take(contents, length(contents) - 1);
-		close tcp_packet_partial(start, pen, end, take(length(contents) - 1, contents), seq);
+		close tcp_packet_partial(start, pen, end, take(length(contents) - 1, contents), seq, eff);
 	}
-	close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+	close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 }
 
 /* Equivalence between tcp_packet_partial and tcp_packet_partial_end */
@@ -314,50 +316,50 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 
 //tcp_packet_partial -> tcp_packet_partial_end for some end_seq
 lemma void partial_start_implies_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq)
-requires tcp_packet_partial(start, end, end_next, contents, seq);
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, ?end_seq);
+requires tcp_packet_partial(start, end, end_next, contents, seq, ?eff);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, ?end_seq, ?end_eff);
 {
 	if(start == end) {
-		open tcp_packet_partial(start, end, end_next, contents, seq);
-		open tcp_packet_single(start, seq, ?eff);
+		open tcp_packet_partial(start, end, end_next, contents, seq, eff);
+		open tcp_packet_single(start, seq, eff);
 		int end_seq = end->seq;
 		close tcp_packet_single(end, end_seq, eff);
-		close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, eff);
 	}
 	else {
-		open tcp_packet_partial(start, end, end_next, contents, seq);
+		open tcp_packet_partial(start, end, end_next, contents, seq, eff);
 		tcp_packet_t *next = start->next;
 		list<pair<int, tcp_reorder_effect> > tl = tail(contents);
 		//Get next->seq as a variable
-		open tcp_packet_partial(next, end, end_next, tl, ?seq1);
-		close tcp_packet_partial(next, end, end_next, tl, seq1);
+		open tcp_packet_partial(next, end, end_next, tl, ?seq1, ?eff1);
+		close tcp_packet_partial(next, end, end_next, tl, seq1, eff1);
 		
 		partial_start_implies_end(next, end, end_next, tl, seq1);
-		open tcp_packet_partial_end(next, end, end_next, tl, seq1, ?end_seq);
+		open tcp_packet_partial_end(next, end, end_next, tl, seq1, eff1, ?end_seq, ?end_eff);
 		if(next == end) {
 			
 			//get that start != 0
-			open tcp_packet_single(start, seq, ?eff);
+			open tcp_packet_single(start, seq, eff);
 			close tcp_packet_single(start, seq, eff);
 			
-			close tcp_packet_partial(start, start, end, cons(pair(seq, eff), nil), seq);
-			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			close tcp_packet_partial(start, start, end, cons(pair(seq, eff), nil), seq, eff);
+			close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 		}
 		else {
 			//The inductive case
 			//to get pen in the context
-			assert(tcp_packet_partial(next, ?pen, end, take(length(tail(contents)) - 1, tail(contents)), seq1));
+			assert(tcp_packet_partial(next, ?pen, end, take(length(tail(contents)) - 1, tail(contents)), seq1, eff1));
 			sorted_app1(take(length(contents) - 1, contents), drop(length(contents) -1, contents));
 			//want to show start != pen
 			if(start == pen) {
 				//in this case, we have start -> next -> pen = start, so we have a cycle, contradiction bc of separating conjuction
 				//we need to get pen->next to show it is end, so we apply IH again
 				partial_start_implies_end(next, pen, end, take((length(tail(contents)) - 1), tail(contents)), seq1);
-				open tcp_packet_partial_end(next, pen, end, take((length(tail(contents)) - 1), tail(contents)), seq1, ?end_seq1);
+				open tcp_packet_partial_end(next, pen, end, take((length(tail(contents)) - 1), tail(contents)), seq1, eff1, ?end_seq1, _);
 			}
 			else {
-				close tcp_packet_partial(start, pen, end, take((length(contents) - 1), contents), seq);
-				close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+				close tcp_packet_partial(start, pen, end, take((length(contents) - 1), contents), seq, eff);
+				close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 			}
 		}
 	}
@@ -366,37 +368,34 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, ?end_seq);
 
 //tcp_packet_partial_end -> tcp_packet_partial (easier)	
 lemma void partial_end_implies_start(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-ensures tcp_packet_partial(start, end, end_next, contents, seq);
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff);
+ensures tcp_packet_partial(start, end, end_next, contents, seq, eff);
 {
 	if(start==end) {
-		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-		close tcp_packet_partial(start, end, end_next, contents, seq);
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
+		close tcp_packet_partial(start, end, end_next, contents, seq, eff);
 	}
 	else {
-		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 		//get pen in context
-		open tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq);
+		open tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq, eff);
 		tcp_packet_t *next = start->next;
 		if(start == pen) {
-			//get end_eff in context
-			open tcp_packet_single(end, end_seq, ?end_eff);
-			close tcp_packet_single(end, end_seq, end_eff);
-			close tcp_packet_partial(next, end, end_next, cons(pair(end_seq, end_eff), nil), end_seq);
+			close tcp_packet_partial(next, end, end_next, cons(pair(end_seq, end_eff), nil), end_seq, end_eff);
 			length_pos(contents);
 			append_drop_take(contents, length(contents) - 1);
-			close tcp_packet_partial(start, end, end_next, contents, seq);
+			close tcp_packet_partial(start, end, end_next, contents, seq, eff);
 		}
 		else {
 			sorted_tail(contents);
 			assert(contents == cons(?seq2, tail(contents)));
 			//need seq1 in context
-			open tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), ?seq1);
-			close tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), seq1);
+			open tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), ?seq1, ?eff1);
+			close tcp_packet_partial(next, pen, end, tail(take(length(contents) - 1, contents)), seq1, eff1);
 			
-			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+			close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, eff1, end_seq, end_eff);
 			partial_end_implies_start(next, end, end_next, tail(contents), seq1, end_seq);
-			close tcp_packet_partial(start, end, end_next, contents, seq);
+			close tcp_packet_partial(start, end, end_next, contents, seq, eff);
 		}
 	}
 }
@@ -408,30 +407,27 @@ ensures tcp_packet_partial(start, end, end_next, contents, seq);
 
 // This allows us to peel off the first packet and still have tcp_partial_packet_end of the remaining list so that we can apply the IH on the remaining list
 lemma void tcp_partial_packet_end_ind(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& start != end;
-ensures tcp_packet_single(start, seq, ?eff) &*& start->next |-> ?next &*& contents == cons(pair(seq, eff), ?tl) &*& tcp_packet_partial_end(next, end, end_next, tl, ?seq1, end_seq) 
-		&*& sorted(contents) == true;
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff) &*& start != end;
+ensures tcp_packet_single(start, seq, eff) &*& start->next |-> ?next &*& contents == cons(pair(seq, eff), ?tl) &*& 
+	tcp_packet_partial_end(next, end, end_next, tl, ?seq1, ?eff1, end_seq, end_eff) &*& sorted(contents) == true;
 {
-	open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-	open tcp_packet_partial(start, ?pen, end, take(length(contents) -1, contents), seq);
+	open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
+	open tcp_packet_partial(start, ?pen, end, take(length(contents) -1, contents), seq, eff);
 	//get next in context
-	open tcp_packet_single(start, seq, ?eff);
+	open tcp_packet_single(start, seq, eff);
 	tcp_packet_t *next = start->next;
 	close tcp_packet_single(start, seq, eff);
-	//get end_eff in context
-	open tcp_packet_single(end, end_seq, ?end_eff);
-	close tcp_packet_single(end, end_seq, end_eff);
 	sorted_tail(contents);
 	length_pos(contents);
 	append_drop_take(contents, length(contents) - 1);
 	if(start == pen) {
-		close tcp_packet_partial_end(next, end, end_next, cons(pair(end_seq, end_eff), nil), end_seq, end_seq);
+		close tcp_packet_partial_end(next, end, end_next, cons(pair(end_seq, end_eff), nil), end_seq, end_eff, end_seq, end_eff);
 	}
 	else {
 		//get seq1 in context
-		open tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), ?seq1);
-		close tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), seq1); 
-		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+		open tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), ?seq1, ?eff1);
+		close tcp_packet_partial(next, pen, end, tail(take(length(contents) -1, contents)), seq1, eff1); 
+		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, eff1, end_seq, end_eff);
 	}
 }
 
@@ -439,23 +435,23 @@ ensures tcp_packet_single(start, seq, ?eff) &*& start->next |-> ?next &*& conten
 	
 lemma void tcp_partial_packet_end_fold(tcp_packet_t *start, tcp_packet_t *next, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int seq1, int end_seq)
 requires tcp_packet_single(start, seq, ?eff) &*& start->next |-> next &*& contents == cons(pair(seq, eff), ?tl) &*& sorted(contents) == true &*&
- 		 tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& start != end;
+ 		 tcp_packet_partial_end(next, end, end_next, tl, seq1, ?eff1, end_seq, ?end_eff);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& start != end;
 {
 	if(start == end) {
 		//contradiction with 2 start->next blocks
-		open tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
+		open tcp_packet_partial_end(next, end, end_next, tl, seq1, eff1, end_seq, end_eff);
 	}
 	else {
-		open tcp_packet_partial_end(next, end, end_next, tl, seq1, end_seq);
+		open tcp_packet_partial_end(next, end, end_next, tl, seq1, eff1, end_seq, end_eff);
 		if(next == end) {
-			close tcp_packet_partial(start, start, end, take(length(contents) - 1, contents), seq);
-			close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+			close tcp_packet_partial(start, start, end, take(length(contents) - 1, contents), seq, eff);
+			close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 		}
 		else {
 			//get pen in context
-			open tcp_packet_partial(next, ?pen, end, take(length(tl) - 1, tl), seq1);
-			close tcp_packet_partial(next, pen, end, take(length(tl) - 1, tl), seq1);
+			open tcp_packet_partial(next, ?pen, end, take(length(tl) - 1, tl), seq1, eff1);
+			close tcp_packet_partial(next, pen, end, take(length(tl) - 1, tl), seq1, eff1);
 			
 			//prove sorted (TODO: make separate lemma?)
 			length_pos(tl);
@@ -463,20 +459,20 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 			sorted_app1(take(length(contents) - 1, contents), drop(length(contents) -1, contents));
 			
 			//prove that next != 0
-			open tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1);
-			open tcp_packet_single(next, seq1, ?eff1);
+			open tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1, eff1);
+			open tcp_packet_single(next, seq1, eff1);
 			close tcp_packet_single(next, seq1, eff1);
-			close tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1);
+			close tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1, eff1);
 			
 			//prove that start != pen
 			if(start == pen) {
 				//again, contradiction in separation logic
 				partial_start_implies_end(next, pen, end, take((length(tl) - 1), tl), seq1);
-				open tcp_packet_partial_end(next, pen, end, take((length(tl) - 1), tl), seq1, ?end_seq1);
+				open tcp_packet_partial_end(next, pen, end, take((length(tl) - 1), tl), seq1, eff1, ?end_seq1, ?end_eff1);
 			}
 			else {
-				close tcp_packet_partial(start, pen, end, cons(pair(seq, eff), take(length(tl) - 1, tl)), seq);
-				close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+				close tcp_packet_partial(start, pen, end, cons(pair(seq, eff), take(length(tl) - 1, tl)), seq, eff);
+				close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 			}
 		}
 	}
@@ -487,20 +483,21 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 // This lemma is crucial - it lets us combine two partial_end predicates (list segments) into one complete one. The list representing the combined segment is append(l1, l2) as expected.
 lemma void partial_app(tcp_packet_t *start, tcp_packet_t *p1, tcp_packet_t *p2, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > l1, 
 	list<pair<int, tcp_reorder_effect> > l2, int seq1, int seq2, int end_seq1, int end_seq2)
-requires tcp_packet_partial_end(start, p1, p2, l1, seq1, end_seq1) &*& tcp_packet_partial_end(p2, end, end_next, l2, seq2, end_seq2) &*& sorted(append(l1, l2)) == true;
-ensures tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_seq2);
+requires tcp_packet_partial_end(start, p1, p2, l1, seq1, ?eff1, end_seq1, ?end_eff1) &*& tcp_packet_partial_end(p2, end, end_next, l2, seq2, ?eff2, end_seq2, ?end_eff2) &*& 
+	sorted(append(l1, l2)) == true;
+ensures tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, eff1, end_seq2, end_eff2);
 {
 	if(start == p1) {
-		open tcp_packet_partial_end(start, p1, p2, l1, seq1, end_seq1);
-		open tcp_packet_partial_end(p2, end, end_next, l2, seq2, end_seq2);
+		open tcp_packet_partial_end(start, p1, p2, l1, seq1, eff1, end_seq1, end_eff1);
+		open tcp_packet_partial_end(p2, end, end_next, l2, seq2, eff2, end_seq2, end_eff2);
 		if(p2 == end) {
-			close tcp_packet_partial(start, start, end, take((length(append(l1, l2)) - 1), append(l1, l2)), seq1);
-			close tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_seq2);
+			close tcp_packet_partial(start, start, end, take((length(append(l1, l2)) - 1), append(l1, l2)), seq1, eff1);
+			close tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, eff1, end_seq2, end_eff2);
 		}
 		else {
 			//get pen in context
-			open tcp_packet_partial(p2, ?pen, end, take(length(l2) - 1, l2), seq2);
-			close tcp_packet_partial(p2, pen, end, take(length(l2) - 1, l2), seq2);
+			open tcp_packet_partial(p2, ?pen, end, take(length(l2) - 1, l2), seq2, eff2);
+			close tcp_packet_partial(p2, pen, end, take(length(l2) - 1, l2), seq2, eff2);
 			
 			//need to prove sorted(seq1 :: take(length(l2) - 1, l2))
 			length_pos(l2);
@@ -514,14 +511,11 @@ ensures tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_s
 			if(start == pen) {
 				//if it is, then start->next = p2 and pen->next = end, so p2 = end, contradiction
 				partial_start_implies_end(p2, pen, end, take(length(l2) - 1, l2), seq2);
-				open tcp_packet_partial_end(p2, pen, end, take(length(l2) - 1, l2), seq2, ?end_seq3);
+				open tcp_packet_partial_end(p2, pen, end, take(length(l2) - 1, l2), seq2, eff2, ?end_seq3, ?end_eff3);
 			}
 			else {
-				//get eff in context
-				open tcp_packet_single(start, seq1, ?eff1);
-				close tcp_packet_single(start, seq1, eff1);
-				close tcp_packet_partial(start, pen, end, cons(pair(seq1, eff1), take(length(l2) - 1, l2)), seq1); 
-				close tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_seq2);
+				close tcp_packet_partial(start, pen, end, cons(pair(seq1, eff1), take(length(l2) - 1, l2)), seq1, eff1); 
+				close tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, eff1, end_seq2, end_eff2);
 			}
 		}
 	}
@@ -530,16 +524,16 @@ ensures tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_s
 		tcp_partial_packet_end_ind(start, p1, p2, l1, seq1, end_seq1);
 		//get next and seq1 in context
 		tcp_packet_t *next = start->next;
-		open tcp_packet_partial_end(next, p1, p2, tail(l1), ?seq12, end_seq1);
-		close tcp_packet_partial_end(next, p1, p2, tail(l1), seq12, end_seq1);
+		open tcp_packet_partial_end(next, p1, p2, tail(l1), ?seq12, ?eff12, end_seq1, end_eff1);
+		close tcp_packet_partial_end(next, p1, p2, tail(l1), seq12, eff12, end_seq1, end_eff1);
 		
 		//we want to show end != next
 		if(next == end) {
 			//want to get end->next and next->next heap chunks to prove false (must be disjoint)
-			open tcp_packet_partial_end(p2, end, end_next, l2, seq2, end_seq2); //end->next chunk
+			open tcp_packet_partial_end(p2, end, end_next, l2, seq2, eff2, end_seq2, end_eff2); //end->next chunk
 			//easiest way is to use previous lemma (though it's not strictly needed)
 			partial_end_implies_start(next, p1, p2, tail(l1), seq12, end_seq1);
-			open tcp_packet_partial(next, p1, p2, tail(l1), seq12);
+			open tcp_packet_partial(next, p1, p2, tail(l1), seq12, eff12);
 		}
 		else {
 			sorted_tail(append(l1, l2));
@@ -556,18 +550,18 @@ ensures tcp_packet_partial_end(start, end, end_next, append(l1, l2), seq1, end_s
 	
 //First, we show that seq and end_seq are in the contents list
 lemma void partial_end_contents_mem(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& mem(seq, map(fst, contents)) == true &*& mem(end_seq, map(fst, contents)) == true;
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& mem(seq, map(fst, contents)) == true &*& mem(end_seq, map(fst, contents)) == true;
 {
 	if(start == end) {
-		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-		close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
+		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	}
 	else {
 		tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
 		//get next and seq1 in context
-		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
-		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, ?eff1, end_seq, end_eff);
+		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, eff1, end_seq, end_eff);
 		
 		partial_end_contents_mem(next, end, end_next, tail(contents), seq1, end_seq);
 		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
@@ -576,23 +570,23 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 	
 // Then, we show that everything in contents is inrange (between 0 and 2^31-1). This is the real result; the following lemma is for convenience, so we don't need to call forall_mem each time.
 lemma void partial_end_contents_forall_inrange(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& forall(map(fst, contents), inrange) == true;
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& forall(map(fst, contents), inrange) == true;
 {
 	if(start == end) {
-		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-		open tcp_packet_single(end, end_seq, ?end_eff);
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
+		open tcp_packet_single(end, end_seq, end_eff);
 		close tcp_packet_single(end, end_seq, end_eff);
-		close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	}
 	else {
 		tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
-		open tcp_packet_single(start, seq, ?eff);
+		open tcp_packet_single(start, seq, eff);
 		close tcp_packet_single(start, seq, eff);
 		
 		//get next and seq1
-		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
-		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, ?eff1, end_seq, end_eff);
+		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, eff1, end_seq, end_eff);
 		partial_end_contents_forall_inrange(next, end, end_next, tail(contents), seq1, end_seq);
 		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
 	}
@@ -600,8 +594,8 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 	
 	
 lemma void partial_end_contents_inrange(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq, int x)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& mem(x, map(fst, contents)) == true;
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& inrange(x) == true;
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff) &*& mem(x, map(fst, contents)) == true;
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& inrange(x) == true;
 {
 	partial_end_contents_forall_inrange(start, end, end_next, contents, seq, end_seq);
 	forall_mem(x, map(fst, contents), inrange);
@@ -610,19 +604,19 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 // Now, we can prove the upper bound; ie: everything in contents is at most end_next
 	
 lemma void partial_end_contents_ub(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& ub(end_seq, contents) == true;
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& ub(end_seq, contents) == true;
 {
 	if(start == end) {
-		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 		cmp_same(end_seq);
-		close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	}
 	else {
 		tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
 		//get next and seq1 in context
-		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, end_seq);
-		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, end_seq);
+		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, ?eff1, end_seq, end_eff);
+		close tcp_packet_partial_end(next, end, end_next, tail(contents), seq1, eff1, end_seq, end_eff);
 		//get IH
 		partial_end_contents_ub(next, end, end_next, tail(contents), seq1, end_seq);
 		
@@ -634,7 +628,7 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 		partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, end_seq, end_seq);
 		partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, end_seq, seq1);
 		//need to know seq is in range
-		open tcp_packet_single(start, seq, ?eff);
+		open tcp_packet_single(start, seq, eff);
 		close tcp_packet_single(start, seq, eff);
 		cmp_ge_trans(end_seq, seq1, seq);
 		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, seq1, end_seq);
@@ -643,20 +637,20 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*&
 
 //One other helpful lemma: the head of partial_end is always nonzero
 lemma void partial_end_start_nonzero(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, int end_seq)
-requires tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-ensures tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq) &*& start != 0;
+requires tcp_packet_partial_end(start, end, end_next, contents, seq, ?eff, end_seq, ?end_eff);
+ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& start != 0;
 {
 	if(start == end) {
-		open tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
-		open tcp_packet_single(start, seq, ?eff);
+		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
+		open tcp_packet_single(start, seq, eff);
 		close tcp_packet_single(start, seq, eff);
-		close tcp_packet_partial_end(start, end, end_next, contents, seq, end_seq);
+		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	}
 	else {
 		tcp_partial_packet_end_ind(start, end, end_next, contents, seq, end_seq);
-		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?next_seq, end_seq);
-		close tcp_packet_partial_end(next, end, end_next, tail(contents), next_seq, end_seq);
-		open tcp_packet_single(start, seq, ?eff);
+		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?next_seq, ?next_eff, end_seq, end_eff);
+		close tcp_packet_partial_end(next, end, end_next, tail(contents), next_seq, next_eff, end_seq, end_eff);
+		open tcp_packet_single(start, seq, eff);
 		close tcp_packet_single(start, seq, eff);
 		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, next_seq, end_seq);
 	}
