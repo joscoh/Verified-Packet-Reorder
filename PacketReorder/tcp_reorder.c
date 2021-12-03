@@ -598,28 +598,40 @@ tcp_packet_t *tcp_pop_packet(tcp_packet_list_t *ord)
 /*@ensures l == nil ? result == 0 &*& tcp_packet_list_tp(ord, l, exp_seq) :
 	l == cons(pair(?seq, ?eff), ?tl) &*&
 	(cmp(seq, exp_seq) > 0) ? tcp_packet_list_tp(ord, l, exp_seq) :
-		tcp_packet_single(?start, seq, eff, ?plen) &*& result == start &*&
+		tcp_packet_single(?start, seq, eff, ?plen) &*& start->next |-> _ &*& result == start &*&
 		tcp_packet_list_tp(ord, tl, update_exp_seq(eff, plen, seq, exp_seq));
 @*/
  
    {
-
+	//@open tcp_packet_list_tp(ord, l, exp_seq);
 	tcp_packet_t *head = ord->list;
 
 	/* No packets remaining in the list */
-	if (head == NULL)
+	if (head == NULL) {
 		return NULL;
-
+		//@close tcp_packet_list_tp(ord, l, exp_seq);
+	}
+	//@open tcp_packet_full(?start, ?end, l, ?start_seq);
+	//@open tcp_packet_partial(start, end, 0, l, start_seq, ?start_eff);
+	//@open tcp_packet_single(start, start_seq, start_eff, ?start_plen);
+	//@open tcp_packet_list_wf(ord, end, length(l), exp_seq);
 	if (seq_cmp(head->seq, ord->expected_seq) > 0) {
 		/* Not the packet we're looking for - sequence number gap */
 		return NULL;
+		//@close tcp_packet_list_wf(ord, end, length(l), exp_seq);
+		//@close tcp_packet_single(start, start_seq, start_eff, start_plen);
+		//@close tcp_packet_partial(start, end, 0, l, start_seq, start_eff);
+		//@close tcp_packet_full(start, end, l, start_seq);
+		//@close tcp_packet_list_tp(ord, l, exp_seq);
 	}
 
 	/* Remove the packet from the list */
 	if (ord->list_end == head)
 		ord->list_end = NULL;
+	//@tcp_packet_t *next = head->next;
 	ord->list = head->next;
 	ord->list_len -= 1;
+	
 
 	/* Update the expected sequence number */
 	if (head->type == TCP_REORDER_SYN)
@@ -629,11 +641,26 @@ tcp_packet_t *tcp_pop_packet(tcp_packet_list_t *ord)
 	if (head->type == TCP_REORDER_DATA) 
 		ord->expected_seq = head->seq + head->plen;
 	if (head->type == TCP_REORDER_RETRANSMIT) {
-
+		//@assume(inrange(head->seq + head->plen) == true); //ASSUMPTION
 		if (seq_cmp(head->seq + head->plen, ord->expected_seq) > 0) 
 			ord->expected_seq = head->seq + head->plen;
 	}
-
+	//@effect_reorder_t_inv(start_eff);
+	//@close tcp_packet_single(start, start_seq, start_eff, start_plen);
+	//@update_exp_seq_inrange(start_eff, start_plen, start_seq, exp_seq); //NOTE: THIS IS AN ASSUMPTION
+	/*@
+		if(next) {
+			//Get next_seq and next_eff
+			open tcp_packet_partial(next, end, 0, tail(l), ?next_seq, ?next_eff);
+			close tcp_packet_partial(next, end, 0, tail(l), next_seq, next_eff);
+			close tcp_packet_full(next, end, tail(l), next_seq);
+			close tcp_packet_list_wf(ord, end, length(l) - 1, update_exp_seq(start_eff, start_plen, start_seq, exp_seq));
+			
+		}
+		else close tcp_packet_list_wf(ord, 0, length(l) - 1, update_exp_seq(start_eff, start_plen, start_seq, exp_seq));	
+	@*/
+	
+	//@close tcp_packet_list_tp(ord, tail(l), update_exp_seq(start_eff, start_plen, start_seq, exp_seq));
 	return head;
 	
 }

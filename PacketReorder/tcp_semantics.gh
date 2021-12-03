@@ -106,10 +106,15 @@ sequence number, are as follows:
 	
 fixpoint int update_exp_seq(tcp_reorder_effect ev, int plen, int seq, int exp_seq) {
 	return
-	(cmp(seq, exp_seq) > 0 || ev == r_rst ? exp_seq :
+	((cmp(seq, exp_seq) > 0 || ev == r_rst || ev == r_ack || ev == r_ignore) ? exp_seq : //r_ignore should not occur but we add it for completeness; it shouldn't change the sequence number
 	(ev == r_syn || ev == r_fin ? exp_seq + 1 :
 	(ev == r_retransmit ? (cmp(seq + plen, exp_seq) > 0 ? seq + plen : exp_seq) :
 	seq + plen)));
 }
+
+//NOTE: THIS IS UNSOUND, but because we are fudging sequence numbers anyway, we assume that all sequence numbers, including expected, are in signed integer range
+lemma void update_exp_seq_inrange(tcp_reorder_effect ev, int plen, int seq, int exp_seq);
+requires inrange(seq) == true && inrange(exp_seq) == true;
+ensures inrange(update_exp_seq(ev, plen, seq, exp_seq)) == true;
 
 #endif
