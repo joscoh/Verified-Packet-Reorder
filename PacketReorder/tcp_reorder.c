@@ -136,7 +136,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 	   {
 	   //@open tcp_packet_full(head, end, _, _);
 	   //@open tcp_packet_partial(head, end, _, _, _, _);
-	   //@open tcp_packet_single(head, _, _);
+	   //@open tcp_packet_single(head, _, _, _);
 		if (ord->destroy_packet) {
 			//Need to do in 2 parts for Verifast
 			destroy_packet_callback *des = (ord->destroy_packet);
@@ -194,7 +194,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	
 	//@tcp_reorder_effect eff = reorder_t_to_effect(type);
 	//@ reorder_t_effect_inv(type);
-	//@close tcp_packet_single(tpkt, seq, eff);
+	//@close tcp_packet_single(tpkt, seq, eff, plen);
 	
 	//@open tcp_packet_list_tp(ord, l, exp_seq);
 	//@open tcp_packet_list_wf(ord, ?end, length(l), exp_seq);
@@ -227,7 +227,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	//@partial_start_implies_end(start, end, 0, l, start_seq, start_eff);
 	//Get end_seq in context
 	//@open tcp_packet_partial_end(start, end, 0, l, start_seq, start_eff, ?end_seq, ?end_eff);
-	//@open tcp_packet_single(end, end_seq, end_eff);
+	//@open tcp_packet_single(end, end_seq, end_eff, ?end_plen);
 	if (seq_cmp(seq, it->seq) >= 0) {
 		tpkt->next = NULL;
 		it->next = tpkt;
@@ -236,7 +236,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		ord->list_len += 1;
 		
 		//@close tcp_packet_partial_end(tpkt, tpkt, 0, cons(pair(seq, eff), nil), seq, eff, seq, eff);
-		//@close tcp_packet_single(end, end_seq, end_eff);
+		//@close tcp_packet_single(end, end_seq, end_eff, end_plen);
 		//@close tcp_packet_partial_end(start, end, tpkt, l, start_seq, start_eff, end_seq, end_eff);
 		//need to prove sorted
 		//@partial_end_contents_forall_inrange(start, end, tpkt, l, start_seq, start_eff, end_seq, end_eff); //everything in l is in range
@@ -254,7 +254,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	/* Otherwise, find the appropriate spot for the packet in the list */
 	
 	//Establish invariants
-	//@close tcp_packet_single(end, end_seq, end_eff);
+	//@close tcp_packet_single(end, end_seq, end_eff, end_plen);
 	//@close tcp_packet_partial_end(start, end, 0, l, start_seq, start_eff, end_seq, end_eff);
 	//@close tcp_packet_list_wf(ord, end, length(l), exp_seq);
 	
@@ -270,7 +270,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	while(it!= NULL)
 	//for (it = ord->list; it != NULL; it = it->next)
 	/*@
-	 invariant tcp_packet_single(tpkt, seq, eff) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l), exp_seq) &*& ord->list |-> start &*&
+	 invariant tcp_packet_single(tpkt, seq, eff, plen) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l), exp_seq) &*& ord->list |-> start &*&
 	 	tcp_packet_partial_end_gen(start, prev, it, ?l1, start_seq, start_eff, ?prev_seq, ?prev_eff) &*& 
 	 	tcp_packet_partial_end_gen(it, end, 0, ?l2, ?it_seq, ?it_eff, end_seq, end_eff) &*&
 	 	append(l1, l2) == l &*& 
@@ -292,7 +292,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	      		else {
 	      			tcp_partial_packet_end_ind(it, end, 0, l2, start_seq, start_eff, end_seq, end_eff);
 	      		}
-	      		open tcp_packet_single(it, start_seq, start_eff);
+	      		open tcp_packet_single(it, start_seq, start_eff, ?start_plen);
 	      	}
 	      	else if(it == 0) {} //trivial
 	      	else {
@@ -301,14 +301,14 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	      			close tcp_packet_partial_end(it, end, 0, l2, it_seq, it_eff, end_seq, end_eff);
 	      			tcp_partial_packet_end_ind(it, end, 0, l2, it_seq, it_eff, end_seq, end_eff);
 	      		}
-	      		open tcp_packet_single(it, it_seq, it_eff);
+	      		open tcp_packet_single(it, it_seq, it_eff, ?it_plen);
 	      		// In this case, we also need to be able to access prev->next
 	      		open tcp_packet_partial_end(start, prev, it, l1, start_seq, start_eff, prev_seq, prev_eff);
-	      		open tcp_packet_single(prev, prev_seq, prev_eff);
+	      		open tcp_packet_single(prev, prev_seq, prev_eff, ?prev_plen);
 	      	}
 	      	@*/
 	      	// this was the goal - now we can access it->seq
-	      	//@ open tcp_packet_single(tpkt, seq, eff);
+	      	//@ open tcp_packet_single(tpkt, seq, eff, plen);
 	      	//@ open tcp_packet_list_wf(ord, end, length(l), exp_seq);
 	      	
 		if (seq_cmp(it->seq, seq) > 0) {
@@ -319,13 +319,13 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 				ord->list = tpkt;
 			ord->list_len += 1;
 			// Establish postconditions here
-			//@ close tcp_packet_single(tpkt, seq, eff);
+			//@ close tcp_packet_single(tpkt, seq, eff, plen);
 			/*@
 				if(prev) {
 					// now we have start --> prev -> tkpt -> it --> end (the most interesting case)
 					// First, we deal with start ---> tkpt
-					close tcp_packet_single(it, it_seq, it_eff);
-					close tcp_packet_single(prev, prev_seq, prev_eff);
+					close tcp_packet_single(it, it_seq, it_eff, it->plen);
+					close tcp_packet_single(prev, prev_seq, prev_eff, prev->plen);
 					
 					close tcp_packet_partial_end(start, prev, tpkt, l1, start_seq, start_eff, prev_seq, prev_eff);
 					//in either case, we need to close tcp_packet_partial_end(it, end, 0, l2, it_seq, end_seq)
@@ -361,12 +361,12 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 				else {
 					// In each case, we need to show that we have tcp_partial_end(tpkt, end, 0, insert(seq, l), seq, _, end_seq);
 					if(it == end) {
-						close tcp_packet_single(it, end_seq, end_eff);
+						close tcp_packet_single(it, end_seq, end_eff, end->plen);
 						close tcp_packet_partial_end(it, end, 0, l, end_seq, end_eff, end_seq, end_eff);
 						tcp_partial_packet_end_fold(tpkt, it, end, 0, insert(seq, eff, l), seq, eff, end_seq, end_eff, end_seq, end_eff);
 					}
 					else {
-						close tcp_packet_single(it, start_seq, start_eff);
+						close tcp_packet_single(it, start_seq, start_eff, start->plen);
 						//get seq1
 						open tcp_packet_partial_end(?next, end, 0, tail(l), ?seq1, ?eff1, end_seq, end_eff);
 						close tcp_packet_partial_end(next, end, 0, tail(l), seq1, eff1, end_seq, end_eff);
@@ -390,7 +390,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		prev = it;
 		it = it->next;
 		//Preservation of loop invariant
-		//@close tcp_packet_single(tpkt, seq, eff);
+		//@close tcp_packet_single(tpkt, seq, eff, plen);
 		//@close tcp_packet_list_wf(ord, end, length(l), exp_seq);
 		//prove cmp(end_seq, seq) < 0
 		/*@
@@ -408,9 +408,9 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 		/*@
 			if(old_prev) {
 				//First part is start --> prev -> it, and it becomes the new prev
-				close tcp_packet_single(old_prev, prev_seq, prev_eff);
+				close tcp_packet_single(old_prev, prev_seq, prev_eff, old_prev->plen);
 				close tcp_packet_partial_end(start, old_prev, new_prev, l1, start_seq, start_eff, prev_seq, prev_eff);
-				close tcp_packet_single(old_it, it_seq, it_eff);
+				close tcp_packet_single(old_it, it_seq, it_eff, old_it->plen);
 				close tcp_packet_partial_end(new_prev, new_prev, new_it, cons(pair(it_seq, it_eff), nil), it_seq, it_eff, it_seq, it_eff);
 				//prove that l1 ++ [it_seq] is sorted - we know this because l = l1 ++ (it_seq :: l2) = (l1 ++ [it_seq]) ++ l2
 				append_assoc(l1, cons(pair(it_seq, it_eff), nil), tail(l2));
@@ -432,13 +432,13 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 			}
 			else {
 				if(old_it == end) {
-					close tcp_packet_single(new_prev, it_seq, it_eff);
+					close tcp_packet_single(new_prev, it_seq, it_eff, end->plen);
 					close tcp_packet_partial_end(new_prev, new_prev, new_it, cons(pair(it_seq, it_eff), nil), it_seq, it_eff, it_seq, it_eff);
 					close tcp_packet_partial_end_gen(new_prev, new_prev, new_it, cons(pair(it_seq, it_eff), nil), it_seq, it_eff, it_seq, it_eff);
 					close tcp_packet_partial_end_gen(new_it, end, 0, nil, 0, it_eff, end_seq, end_eff); //0 and it_eff don't matter
 				}
 				else {
-					close tcp_packet_single(new_prev, it_seq, it_eff);
+					close tcp_packet_single(new_prev, it_seq, it_eff, old_it->plen);
 					close tcp_packet_partial_end(new_prev, new_prev, new_it, cons(pair(it_seq, it_eff), nil), it_seq, it_eff, it_seq, it_eff);
 					close tcp_packet_partial_end_gen(new_prev, new_prev, new_it, cons(pair(it_seq, it_eff), nil), it_seq, it_eff, it_seq, it_eff);
 					//get next and seq1 in context
@@ -594,8 +594,13 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
  *
  */
 tcp_packet_t *tcp_pop_packet(tcp_packet_list_t *ord)
-///@requires tcp_packet_list_tp(ord, ?l, ?exp_seq)
-///@ensures l == nil ? result == 0 &*& tcp_packet_list(ord, l, exp_seq) :
+//@requires tcp_packet_list_tp(ord, ?l, ?exp_seq);
+/*@ensures l == nil ? result == 0 &*& tcp_packet_list_tp(ord, l, exp_seq) :
+	l == cons(pair(?seq, ?eff), ?tl) &*&
+	(cmp(seq, exp_seq) > 0) ? tcp_packet_list_tp(ord, l, exp_seq) :
+		tcp_packet_single(?start, seq, eff, ?plen) &*& result == start &*&
+		tcp_packet_list_tp(ord, tl, update_exp_seq(eff, plen, seq, exp_seq));
+@*/
  
    {
 

@@ -185,11 +185,11 @@ typedef void destroy_packet_callback(void *data);
 /*@ 
 
 //These are the non-list parts of the packet
-predicate tcp_packet_single(tcp_packet_t *start, int seq, tcp_reorder_effect eff) =
+predicate tcp_packet_single(tcp_packet_t *start, int seq, tcp_reorder_effect eff, int plen) =
 // start is properly intialized
 start != 0 &*& malloc_block_tcp_pkt(start) &*& 
 //fields are initialized
-start->type |-> effect_to_reorder_t(eff) &*& start->plen |-> ?plen &*& start->ts |-> ?ts &*& 
+start->type |-> effect_to_reorder_t(eff) &*& start->plen |-> plen &*& start->ts |-> ?ts &*& 
 // data is initialized
 start->data |-> ?data &*& data_present(data) &*& 
 //seq
@@ -198,7 +198,7 @@ start->seq |-> seq &*& inrange(seq) == true;
 // This is the natural way to express a linked list with start and end pointers. It is useful for getting information about the start node, but not the end node.
 //TODO: HERE
 predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, tcp_reorder_effect eff) =
-tcp_packet_single(start, seq, eff) &*& start->next |-> ?next &*&
+tcp_packet_single(start, seq, eff, ?plen) &*& start->next |-> ?next &*&
 // sortedness/contents
 sorted(contents) == true &*& contents == cons(pair(seq, eff), ?tl) &*&
 // predicate recursively holds - only handle seq and next in recursive case because we handle end separately
@@ -208,7 +208,7 @@ sorted(contents) == true &*& contents == cons(pair(seq, eff), ?tl) &*&
 
 predicate tcp_packet_partial_end(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, 
 	tcp_reorder_effect eff, int end_seq, tcp_reorder_effect end_eff) =
-tcp_packet_single(end, end_seq, end_eff) &*& end != 0 &*& end->next |-> end_next &*& sorted(contents) == true &*&
+tcp_packet_single(end, end_seq, end_eff, ?end_plen) &*& end != 0 &*& end->next |-> end_next &*& sorted(contents) == true &*&
 (start == end ? contents == cons(pair(end_seq, end_eff), nil) && seq == end_seq && eff == end_eff
 : contents != nil &*& tcp_packet_partial(start, ?pen, end, take(length(contents) - 1, contents), seq, eff) &*& drop(length(contents) - 1, contents) == cons(pair(end_seq, end_eff), nil)); 
 
@@ -340,8 +340,8 @@ requires tcp_packet_partial(start, end, end_next, contents, seq, eff);
 ensures tcp_packet_partial(start, end, end_next, contents, seq, eff) &*& start != 0;
 {
 	open tcp_packet_partial(start, end, end_next, contents, seq, eff);
-	open tcp_packet_single(start, seq, eff);
-	close tcp_packet_single(start, seq, eff);
+	open tcp_packet_single(start, seq, eff, ?plen);
+	close tcp_packet_single(start, seq, eff, plen);
 	close tcp_packet_partial(start, end, end_next, contents, seq, eff);
 }
 
@@ -375,9 +375,9 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, ?end_se
 {
 	if(start == end) {
 		open tcp_packet_partial(start, end, end_next, contents, seq, eff);
-		open tcp_packet_single(start, seq, eff);
+		open tcp_packet_single(start, seq, eff, ?plen);
 		int end_seq = end->seq;
-		close tcp_packet_single(end, end_seq, eff);
+		close tcp_packet_single(end, end_seq, eff, plen);
 		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, eff);
 	}
 	else {
@@ -393,8 +393,8 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, ?end_se
 		if(next == end) {
 			
 			//get that start != 0
-			open tcp_packet_single(start, seq, eff);
-			close tcp_packet_single(start, seq, eff);
+			open tcp_packet_single(start, seq, eff, ?plen);
+			close tcp_packet_single(start, seq, eff, plen);
 			
 			close tcp_packet_partial(start, start, end, cons(pair(seq, eff), nil), seq, eff);
 			close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
@@ -464,15 +464,15 @@ ensures tcp_packet_partial(start, end, end_next, contents, seq, eff);
 lemma void tcp_partial_packet_end_ind(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq,
 	tcp_reorder_effect eff, int end_seq, tcp_reorder_effect end_eff)
 requires tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& start != end;
-ensures tcp_packet_single(start, seq, eff) &*& start->next |-> ?next &*& contents == cons(pair(seq, eff), ?tl) &*& 
+ensures tcp_packet_single(start, seq, eff, ?plen) &*& start->next |-> ?next &*& contents == cons(pair(seq, eff), ?tl) &*& 
 	tcp_packet_partial_end(next, end, end_next, tl, ?seq1, ?eff1, end_seq, end_eff) &*& sorted(contents) == true;
 {
 	open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	open tcp_packet_partial(start, ?pen, end, take(length(contents) -1, contents), seq, eff);
 	//get next in context
-	open tcp_packet_single(start, seq, eff);
+	open tcp_packet_single(start, seq, eff, ?plen);
 	tcp_packet_t *next = start->next;
-	close tcp_packet_single(start, seq, eff);
+	close tcp_packet_single(start, seq, eff, plen);
 	sorted_tail(contents);
 	length_pos(contents);
 	append_drop_take(contents, length(contents) - 1);
@@ -491,7 +491,7 @@ ensures tcp_packet_single(start, seq, eff) &*& start->next |-> ?next &*& content
 	
 lemma void tcp_partial_packet_end_fold(tcp_packet_t *start, tcp_packet_t *next, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq,
 	tcp_reorder_effect eff, int seq1, tcp_reorder_effect eff1, int end_seq, tcp_reorder_effect end_eff)
-requires tcp_packet_single(start, seq, eff) &*& start->next |-> next &*& contents == cons(pair(seq, eff), ?tl) &*& sorted(contents) == true &*&
+requires tcp_packet_single(start, seq, eff, ?plen) &*& start->next |-> next &*& contents == cons(pair(seq, eff), ?tl) &*& sorted(contents) == true &*&
  		 tcp_packet_partial_end(next, end, end_next, tl, seq1, eff1, end_seq, end_eff);
 ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff) &*& start != end;
 {
@@ -517,8 +517,8 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq
 			
 			//prove that next != 0
 			open tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1, eff1);
-			open tcp_packet_single(next, seq1, eff1);
-			close tcp_packet_single(next, seq1, eff1);
+			open tcp_packet_single(next, seq1, eff1, ?plen1);
+			close tcp_packet_single(next, seq1, eff1, plen1);
 			close tcp_packet_partial(next, pen, end, take((length(tl) -1), tl), seq1, eff1);
 			
 			//prove that start != pen
@@ -635,14 +635,14 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq
 {
 	if(start == end) {
 		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
-		open tcp_packet_single(end, end_seq, end_eff);
-		close tcp_packet_single(end, end_seq, end_eff);
+		open tcp_packet_single(end, end_seq, end_eff, ?end_plen);
+		close tcp_packet_single(end, end_seq, end_eff, end_plen);
 		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	}
 	else {
 		tcp_partial_packet_end_ind(start, end, end_next, contents, seq, eff, end_seq, end_eff);
-		open tcp_packet_single(start, seq, eff);
-		close tcp_packet_single(start, seq, eff);
+		open tcp_packet_single(start, seq, eff, ?plen);
+		close tcp_packet_single(start, seq, eff, plen);
 		
 		//get next and seq1
 		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?seq1, ?eff1, end_seq, end_eff);
@@ -690,8 +690,8 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq
 		partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, eff1, end_seq, end_eff, end_seq);
 		partial_end_contents_inrange(next, end, end_next, tail(contents), seq1, eff1, end_seq, end_eff, seq1);
 		//need to know seq is in range
-		open tcp_packet_single(start, seq, eff);
-		close tcp_packet_single(start, seq, eff);
+		open tcp_packet_single(start, seq, eff, ?plen);
+		close tcp_packet_single(start, seq, eff, plen);
 		cmp_ge_trans(end_seq, seq1, seq);
 		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, eff, seq1, eff1, end_seq, end_eff);
 	}
@@ -705,16 +705,16 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq
 {
 	if(start == end) {
 		open tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
-		open tcp_packet_single(start, seq, eff);
-		close tcp_packet_single(start, seq, eff);
+		open tcp_packet_single(start, seq, eff, ?plen);
+		close tcp_packet_single(start, seq, eff, plen);
 		close tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 	}
 	else {
 		tcp_partial_packet_end_ind(start, end, end_next, contents, seq, eff, end_seq, end_eff);
 		open tcp_packet_partial_end(?next, end, end_next, tail(contents), ?next_seq, ?next_eff, end_seq, end_eff);
 		close tcp_packet_partial_end(next, end, end_next, tail(contents), next_seq, next_eff, end_seq, end_eff);
-		open tcp_packet_single(start, seq, eff);
-		close tcp_packet_single(start, seq, eff);
+		open tcp_packet_single(start, seq, eff, ?plen);
+		close tcp_packet_single(start, seq, eff, plen);
 		tcp_partial_packet_end_fold(start, next, end, end_next, contents, seq, eff, next_seq, next_eff, end_seq, end_eff);
 	}
 }
