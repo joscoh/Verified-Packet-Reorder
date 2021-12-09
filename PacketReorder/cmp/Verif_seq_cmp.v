@@ -106,16 +106,11 @@ Qed.
 Lemma compare_antisym: forall a b,
   0 <= a <= Int.max_unsigned ->
   0 <= b <= Int.max_unsigned ->
-  Z.abs (a - b) <> Int.half_modulus ->
-  (Int.signed (Int.repr (compare a b)) > 0) <-> (Int.signed (Int.repr (compare b a)) < 0).
+  Z.abs (a - b) <> Int.half_modulus <->
+  ((Int.signed (Int.repr (compare a b)) > 0) <-> (Int.signed (Int.repr (compare b a)) < 0)).
 Proof.
-  intros a b Ha Hb Hab1. pose proof (compare_cases a b Ha Hb) as [Hgt [_ _]].
-  rewrite Hgt. pose proof (compare_cases b a Hb Ha) as [_ [Hlt _]]. rewrite Hlt.
-  split; intros [Hfst | Hsnd].
-  - right. lia.
-  - left. lia.
-  - right. lia.
-  - left. lia.
+  intros a b Ha Hb. pose proof (compare_cases a b Ha Hb) as [Hgt [_ _]].
+  rewrite Hgt. pose proof (compare_cases b a Hb Ha) as [_ [Hlt _]]. rewrite Hlt. rep_lia.
 Qed.
 
 (*We need to make sure all values are within 2^31 or outside of 2^31 from each other to get transitivity*)
