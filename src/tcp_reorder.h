@@ -173,13 +173,6 @@ typedef void *read_packet_callback(uint32_t exp, libtrace_packet_t *packet);
 typedef void destroy_packet_callback(void *data);
 //@ requires data_present(data);
 //@ ensures true;
-	
-
-//TODO: for now, ignore data field except via exists
-//TODO: need to handle type now that this may not exist (maybe separate into 2 predicates?)
-
-//For packets, which form a list, we  want to reason about a "partial" list - from a to b, where are nodes are sorted in this list
-//TODO: include type info in here
 
 
 /*@ 
@@ -196,7 +189,6 @@ start->data |-> ?data &*& data_present(data) &*&
 start->seq |-> seq &*& inrange(seq) == true;
 
 // This is the natural way to express a linked list with start and end pointers. It is useful for getting information about the start node, but not the end node.
-//TODO: HERE
 predicate tcp_packet_partial(tcp_packet_t *start, tcp_packet_t *end, tcp_packet_t *end_next, list<pair<int, tcp_reorder_effect> > contents, int seq, tcp_reorder_effect eff) =
 tcp_packet_single(start, seq, eff, ?plen) &*& start->next |-> ?next &*&
 // sortedness/contents
@@ -252,7 +244,6 @@ typedef struct tcp_reorder {
 
 } tcp_packet_list_t;
 
-//TODO: maybe change params but I think ok (maybe can say something about create/destroy to deal with that, maybe not)
 /*@
 
 	//All of the non-contents/start parts of a tcp reorderer, which we bundle together because most are not changing. This is mostly helpful for the loop invariant in insert,
@@ -510,7 +501,7 @@ ensures tcp_packet_partial_end(start, end, end_next, contents, seq, eff, end_seq
 			open tcp_packet_partial(next, ?pen, end, take(length(tl) - 1, tl), seq1, eff1);
 			close tcp_packet_partial(next, pen, end, take(length(tl) - 1, tl), seq1, eff1);
 			
-			//prove sorted (TODO: make separate lemma?)
+			//prove sorted
 			length_pos(tl);
 			append_drop_take(contents, length(contents) - 1);
 			sorted_app1(take(length(contents) - 1, contents), drop(length(contents) -1, contents));

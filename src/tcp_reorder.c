@@ -144,7 +144,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
 			//(*(ord->destroy_packet))(head->data);
 			}
 		else
-			//JOSH - unreachable by assumption
+			//NOTE - unreachable by assumption
 			free(head->data);
 		tmp = head;
 		head = head->next;
@@ -171,7 +171,7 @@ void tcp_destroy_reorderer(tcp_packet_list_t *ord)
  * 	ts - the timestamp of the packet
  * 	type - the packet type, e.g. SYN, FIN, RST, retransmit
  */
- //JOSH - changed to int to reflect error state - malloc not working
+ //NOTE - changed to int to reflect error state - malloc not working
 static int insert_packet(tcp_packet_list_t *ord, void *packet, 
 		uint32_t seq, uint32_t plen, double ts, tcp_reorder_t type)
 //@requires tcp_packet_list_tp(ord, ?l, ?exp_seq) &*& data_present(packet) &*& inrange(seq) == true &*& valid_reorder_t(type) == true;
@@ -181,7 +181,7 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 {
 
 	tcp_packet_t *tpkt = (tcp_packet_t *)malloc(sizeof(tcp_packet_t));
-	//JOSH - added
+	//NOTE - added
 	if(tpkt == 0) return 0;
 	tcp_packet_t *it = NULL;
 	tcp_packet_t *prev = NULL;
@@ -264,11 +264,10 @@ static int insert_packet(tcp_packet_list_t *ord, void *packet,
 	//@close tcp_packet_partial_end_gen(start, prev, start, nil, start_seq, start_eff, 0, end_eff); //end_eff can be anything here
 	//@close tcp_packet_partial_end_gen(start, end, 0, l, start_seq, start_eff, end_seq, end_eff);
 	
-	//JOSH - changed from for loop to while loop - this is much easier invariant-wise (because we don't need to have it->next accessible when the loop continues which is
+	//NOTE - changed from for loop to while loop - this is much easier invariant-wise (because we don't need to have it->next accessible when the loop continues which is
 	//a huge pain.
 	it = ord->list;
 	while(it!= NULL)
-	//for (it = ord->list; it != NULL; it = it->next)
 	/*@
 	 invariant tcp_packet_single(tpkt, seq, eff, plen) &*& tpkt->next |-> _ &*& tcp_packet_list_wf(ord, end, length(l), exp_seq) &*& ord->list |-> start &*&
 	 	tcp_packet_partial_end_gen(start, prev, it, ?l1, start_seq, start_eff, ?prev_seq, ?prev_eff) &*& 
@@ -503,22 +502,21 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	//@open valid_tcp_packet(packet, seqnum, tcp_head_len, ty);
 
 	seq = ntohl(tcp->seq);
-	//JOSH - need to insert casts to make Verifast happy (this won't overflow because of packet specs, but Verifast doesn't check that yet)
+	//NOTE - need to insert casts to make Verifast happy (this won't overflow because of packet specs, but Verifast doesn't check that yet)
 	plen = ((uint32_t) (htons(ip->ip_len)) - ((uint32_t) (ip->ip_hl * 4)) - ((uint32_t) (tcp->doff * 4)));
 	//@uint16_t ip_len_0 = ip->ip_len;
 	//@htons_ntohs(ip_len_0);
-	//JOSH - no idea why they use htons here - should be ntohs since we want plen to be in host byte order. But for all real purposes (eg: Linux), htons and ntohs are the same function,
+	//NOTE - no idea why they use htons here - should be ntohs since we want plen to be in host byte order. But for all real purposes (eg: Linux), htons and ntohs are the same function,
 	//so this is OK. Even in the paper about libtrace, they use ntohs(ip->ip_len) in their example, so I think this is a mistake.
 	pkt_ts = trace_get_seconds(packet);
 
 	/* Pass the packet off to the read callback to extract the appropriate
 	 * packet data */
-	 //JOSH - Verifast doesn't like this in one line; we need to split it up
+	 //NOTE - Verifast doesn't like this in one line; we need to split it up
 	//@open tcp_packet_list_tp(ord, l, exp_seq);
 	//@open tcp_packet_list_wf(ord, ?end, length(l), exp_seq);
 	read_packet_callback *rp = ord->read_packet;
 	packet_data = rp(ord->expected_seq, packet);
-	//packet_data = ord->read_packet(ord->expected_seq, packet);
 	
 	/* No packet data? Ignore */
 	if (packet_data == NULL)
@@ -561,7 +559,7 @@ tcp_reorder_t tcp_reorder_packet(tcp_packet_list_t *ord,
 	
 
 	/* Now actually push it on to the list */
-	//JOSH - handle failure case
+	//NOTE - handle failure case
 	int res = insert_packet(ord, packet_data, seq, plen, pkt_ts, type);
 	if (res == 0) {
 		type = TCP_REORDER_IGNORE;
@@ -597,7 +595,7 @@ tcp_packet_t *tcp_pop_packet(tcp_packet_list_t *ord)
 //@requires tcp_packet_list_tp(ord, ?l, ?exp_seq);
 /*@ensures l == nil ? result == 0 &*& tcp_packet_list_tp(ord, l, exp_seq) :
 	l == cons(pair(?seq, ?eff), ?tl) &*&
-	(cmp(seq, exp_seq) > 0) ? tcp_packet_list_tp(ord, l, exp_seq) :
+	(cmp(seq, exp_seq) > 0) ? result == 0 &*& tcp_packet_list_tp(ord, l, exp_seq) :
 		tcp_packet_single(?start, seq, eff, ?plen) &*& start->next |-> _ &*& result == start &*&
 		tcp_packet_list_tp(ord, tl, update_exp_seq(eff, plen, seq, exp_seq));
 @*/
